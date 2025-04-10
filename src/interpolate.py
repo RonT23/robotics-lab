@@ -105,7 +105,6 @@ if __name__ == "__main__":
 	ax.set_xlabel("X (mm)")
 	ax.set_ylabel("Y (mm)")
 	ax.set_zlabel("Z (mm)")
-	ax.set_title("3D Interpolation: Linear, Quadratic, and Cubic")
 	ax.legend()
 	ax.grid(True)
 	plt.tight_layout()
