@@ -57,22 +57,23 @@ def write_points_to_file(filename, points):
 
 if __name__ == "__main__":
 	
-	P0 = (0.0, 0.0, 0.0)	# initial position
-	P1 = (100, 100, 0)	# final position
+	P0 = (-42.7, -232.3, 115.1)	# initial position
+	P1 = (-147.1, -172.2, 117.7)	# final position
 	n  = 4			# number of interpolated values
 	
 	# receive command line user input
-	if len(sys.argv) != 9:
-	    print(f"Usage : python3 {sys.argv[0]} filename x0 y0 z0 x1 y1 z1 n")
-	    sys.exit(1)
+	# if len(sys.argv) != 9:
+	#     print(f"Usage : python3 {sys.argv[0]} filename x0 y0 z0 x1 y1 z1 n")
+	#     sys.exit(1)
 	
-	# filter input
-	x0, y0, z0, x1, y1, z1, n = map(float, sys.argv[2:])
-	filename = sys.argv[1]
-	
-	P0 = (x0, y0, z0)
-	P1 = (x1, y1, z1)
-	n  = int(n)
+	# # filter input
+	# x0, y0, z0, x1, y1, z1, n = map(float, sys.argv[2:])
+	# filename = sys.argv[1]
+	filename = "output"
+     
+	# P0 = (x0, y0, z0)
+	# P1 = (x1, y1, z1)
+	# n  = int(n)
 	
 	# interpolate
 	result = interpolate_points(P0, P1, n)
