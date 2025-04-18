@@ -34,7 +34,10 @@ class xArm7_kinematics():
         This function computes the configuration of joints for the robot arm through 
         inverse kinematics. It controls joints q1, q2 and q4.
         """
-        joint_1 = 0.0
+        P_ex, P_ey, P_ez = ee_position
+
+        joint_1 = math.atan2(P_ex, P_ey)
+        
         joint_2 = 0.0
         joint_3 = 0.0
         joint_4 = 0.0
@@ -105,56 +108,83 @@ class xArm7_kinematics():
         return J
 
     def tf_A01(self, r_joints_array):
-        tf = np.matrix([[1 , 0 , 0 , 0],\
-                        [0 , 1 , 0 , 0],\
-                        [0 , 0 , 1 , 0],\
-                        [0 , 0 , 0 , 1]])
+        q1 = r_joints_array[0]
+        c1, s1 = np.cos(q1), np.sin(q1)
+
+        tf = np.matrix([[c1  , -s1 , 0.0 , 0],\
+                        [s1  ,  c1 , 0.0 , 0],\
+                        [0.0 , 0.0 , 1.0 , 0.27],\
+                        [0.0 , 0.0 , 0.0 , 1]])
         return tf
 
     def tf_A02(self, r_joints_array):
-        tf_A12 = np.matrix([[1 , 0 , 0 , 0],\
-                            [0 , 1 , 0 , 0],\
-                            [0 , 0 , 1 , 0],\
-                            [0 , 0 , 0 , 1]])
+        
+        q2 = r_joints_array[1]
+        c2, s2 = np.cos(q2), np.sin(q2)
+
+        tf_A12 = np.matrix([[c2  , -s2 , 0 , 0],\
+                            [0   , 0   , 1 , 0],\
+                            [-s2 , -c2 , 0 , 0],\
+                            [0   , 0   , 0 , 1]])
         tf = np.dot( self.tf_A01(r_joints_array), tf_A12 )
         return tf
 
     def tf_A03(self, r_joints_array):
-        tf_A23 = np.matrix([[1 , 0 , 0 , 0],\
-                            [0 , 1 , 0 , 0],\
-                            [0 , 0 , 1 , 0],\
+
+        q3 = r_joints_array[1]
+        c3, s3 = np.cos(q3), np.sin(q3)
+
+        tf_A23 = np.matrix([[c3 , -s3 , 0 , 0],\
+                            [0 , 0 , -1 , -0.29],\
+                            [s3 , c3 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A02(r_joints_array), tf_A23 )
         return tf
 
     def tf_A04(self, r_joints_array):
-        tf_A34 = np.matrix([[1 , 0 , 0 , 0],\
-                            [0 , 1 , 0 , 0],\
-                            [0 , 0 , 1 , 0],\
+
+        q4 = r_joints_array[1]
+        c4, s4 = np.cos(q4), np.sin(q4)
+
+        tf_A34 = np.matrix([[c4 , -s4 , 0 , 0.052],\
+                            [0 , 0 , -1 , 0],\
+                            [s4 , c4 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A03(r_joints_array), tf_A34 )
         return tf
 
     def tf_A05(self, r_joints_array):
-        tf_A45 = np.matrix([[1 , 0 , 0 , 0],\
-                            [0 , 1 , 0 , 0],\
-                            [0 , 0 , 1 , 0],\
+
+        q5 = r_joints_array[1]
+        c5, s5 = np.cos(q5), np.sin(q5)
+
+        tf_A45 = np.matrix([[c5 , -s5 , 0 , 0.077],\
+                            [0 , 0 , -1 , -0.34],\
+                            [s5 , c5 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A04(r_joints_array), tf_A45 )
         return tf
 
     def tf_A06(self, r_joints_array):
-        tf_A56 = np.matrix([[1 , 0 , 0 , 0],\
-                            [0 , 1 , 0 , 0],\
-                            [0 , 0 , 1 , 0],\
+
+        q6 = r_joints_array[1]
+        c6, s6 = np.cos(q6), np.sin(q6)
+
+        tf_A56 = np.matrix([[c6 , -s6 , 0 , 0],\
+                            [0 , 0 , -1 , 0],\
+                            [s6 , c6 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A05(r_joints_array), tf_A56 )
         return tf
 
     def tf_A07(self, r_joints_array):
-        tf_A67 = np.matrix([[1 , 0 , 0 , 0],\
-                            [0 , 1 , 0 , 0],\
-                            [0 , 0 , 1 , 0],\
+
+        q7 = r_joints_array[1]
+        c7, s7 = np.cos(q7), np.sin(q7)
+
+        tf_A67 = np.matrix([[c7 , -s7 , 0 , 0.076],\
+                            [0 , 0 , 1 , 0.097],\
+                            [-s7 , -c7 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A06(r_joints_array), tf_A67 )
         return tf

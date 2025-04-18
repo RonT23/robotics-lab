@@ -71,10 +71,26 @@ class xArm7_controller():
         """Performs the homming operation of the robotic manipulator"""
         # Set the roboti to the initial configuration
         tmp_rate = rospy.Rate(1)
+        self.joint_angpos = self.home_position
 
         for i in [3, 1, 5]:
             self.joint_pos_pub[i].publish(self.joint_angpos[i])
             tmp_rate.sleep()
+
+    def generate_circle_points(self):
+        radius = 0.8
+        center = (0.3, 0.3, 0.3)
+        num_points = 5
+
+        theta = np.linspace(0, 2 * np.pi, num_points)
+        x_c, y_c, z_c = center
+
+        x_vals = x_c + radius * np.cos(theta)
+        y_vals = y_c + radius * np.sin(theta)
+        z_vals = np.full_like(x_vals, z_c)
+
+        points = list(zip(x_vals, y_vals, z_vals))
+        return points
 
     def publish(self):
         """
@@ -82,15 +98,19 @@ class xArm7_controller():
         Position control on joints q1, q2 and q4 for a linear path on x = 0.6043 and z = 0.1508
         The points A and B are set to 40 cm appart and symmetric along x-axis.
         """
-        rospy.loginfo("Setting device to home")
+        #rospy.loginfo("Setting device to home")
 
-        self.home()
+        #self.home()
+        #self.pub_rate.sleep()
 
         rospy.loginfo("The system is ready to execute the path-following algorithm")
 
-        P = [ (0.6043, 0.2, 0.1508),
-              (0.6043, -0.2, 0.1508)
+        P = [ (0.6043, 1.2, 0.1508),
+              (0.6043, -1.2, 0.1508)
         ]
+
+        P = self.generate_circle_points()
+        print(P)
 
         # First the robot must drive from current position to target position A
         # Next the robot must drive from position A to intermediate positions
@@ -102,36 +122,34 @@ class xArm7_controller():
 
         rospy.loginfo(f"The first target is at : {P[next_pos_index]}")
 
+        #for i in range(0, 7):
+        #    self.joint_angpos[i] = self.joint_states.position[i]
+
         while not rospy.is_shutdown():
             
-            # Compute each transformation matrix wrt the base frame from joints' angular positions
-            self.A01 = self.kinematics.tf_A01(self.joint_angpos)
-            self.A02 = self.kinematics.tf_A02(self.joint_angpos)
-            self.A03 = self.kinematics.tf_A03(self.joint_angpos)
-            self.A04 = self.kinematics.tf_A04(self.joint_angpos)
-            self.A05 = self.kinematics.tf_A05(self.joint_angpos)
-            self.A06 = self.kinematics.tf_A06(self.joint_angpos)
+            
             self.A07 = self.kinematics.tf_A07(self.joint_angpos)
             
             # Compute the current position from the kinematic equation
             Pcurrent = self.A07[0:3,3]
             Pnext    = P[next_pos_index]
             
+            print(f'{Pcurrent}:{Pnext}')
+
             # Compute the joint position of the target 
             self.joint_angpos = self.kinematics.compute_angles(Pnext)
             
-            if np.allclose(Pcurrent, Pnext, atol=1e-4): # tolerance of 0.0004 m of difference
-                next_pos_index += 1
+            if np.allclose(Pcurrent, Pnext, atol=1e-2): # tolerance of 0.0004 m of difference
+                next_pos_index = next_pos_index + 1
                 rospy.loginfo(f"Setting the next target position at : {P[next_pos_index]}")
 
-            #for i in range(0, 7):
-            #    print(self.joint_states.position[i])
+            #print(self.joint_states.position)
 
             # Publish the new joint's angular positions
             for i in range(0, 7):
                 self.joint_pos_pub[i].publish(self.joint_angpos[i])
 
-            if np.allclose(Pcurrent, Pnext, atol=1e-4) and next_pos_index == len(P):
+            if np.allclose(Pcurrent, Pnext, atol=1e-2) and next_pos_index == len(P):
                 # the taks is complete, break the loop
                 rospy.loginfo("Task complete")
                 break
