@@ -50,7 +50,7 @@ On terminal 2:
 ```shell
 cd ~/catkin_ws
 source devel/setup.bash
-roslaunch xarm_gazebo zarm7_pf.launch
+roslaunch xarm_gazebo xarm7_pf.launch
 ```
 
 ## 7. Start the Package
