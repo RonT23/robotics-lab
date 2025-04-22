@@ -106,7 +106,7 @@ class xArm7_controller():
         rospy.loginfo("The system is ready to execute the path-following algorithm")
 
         P = [ (0.6043, 1.2, 0.1508),
-              (0.6043, -1.2, 0.1508)
+              (0.6043, -1.2, 0.1506)
         ]
 
         P = self.generate_circle_points()
