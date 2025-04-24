@@ -61,7 +61,14 @@ class xArm7_kinematics():
         # inverse the transform
         q4 = q4_dot + self.theta1 + beta
 
-        q2 = 0.0
+        sin_q2_dot = (P_ez * (L1 + L2 * cos_q4_dot) - P_ex * L2 * sin_q4_dot) / (L1**2 + L2**2 + 2*L1*L2*cos_q4_dot)
+        cos_q2_dot = np.sqrt(1 - sin_q2_dot)
+
+        q2_dot = math.atan2(cos_q2_dot, sin_q2_dot)
+
+        alpha = math.atan(self.l3/self.l2)
+
+        q2 = q2_dot - np.pi/2 - alpha  
 
         joint_1 = q1
         joint_2 = q2
@@ -236,3 +243,4 @@ class xArm7_kinematics():
             z = 0
 
         return np.array([x, y, z])
+

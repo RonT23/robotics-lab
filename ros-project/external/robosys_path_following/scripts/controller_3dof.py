@@ -28,7 +28,6 @@ class xArm7_controller():
     def __init__(self, rate):
 
         #-------- Robot Manipulator Setup ---------------
-
         # Initialize the xArm7 kinematics handler
         self.kinematics = xArm7_kinematics()
 
@@ -41,17 +40,7 @@ class xArm7_controller():
         # Initial joints' states
         self.joint_states = JointState()
 
-        # Transformation matrices of joint frames from base
-        self.A01 = self.kinematics.tf_A01(self.joint_angpos)
-        self.A02 = self.kinematics.tf_A02(self.joint_angpos)
-        self.A03 = self.kinematics.tf_A03(self.joint_angpos)
-        self.A04 = self.kinematics.tf_A04(self.joint_angpos)
-        self.A05 = self.kinematics.tf_A05(self.joint_angpos)
-        self.A06 = self.kinematics.tf_A06(self.joint_angpos)
-        self.A07 = self.kinematics.tf_A07(self.joint_angpos)
-
-        #-------- ROS Environment Setup ------------------
-        
+        #-------- ROS Environment Setup ------------------     
         # Subscribe to the ROS topic where the xArm7 publishes the joint state
         self.joint_states_sub = rospy.Subscriber('/xarm/joint_states', JointState, self.joint_states_callback, queue_size=1)
         
@@ -60,11 +49,8 @@ class xArm7_controller():
         for i in range(0, 7):
             self.joint_pos_pub.append( rospy.Publisher(f'/xarm/joint{i+1}_position_controller/command', Float64, queue_size=1) )
 
-        # publishing period
-        self.pub_period   = 1.0 / rate
-
         # Set the publishing rate
-        self.pub_rate = rospy.Rate(2)
+        self.pub_rate = rospy.Rate(1)
 
         # Start the main ROS loop
         self.publish()
@@ -125,19 +111,19 @@ class xArm7_controller():
         for i in range(0, 7):
             self.joint_angpos[i] = self.joint_states.position[i]
         
-        # find the current possition
+        # find the current possition (forward kinematics)
         self.A07 = self.kinematics.tf_A07(self.joint_angpos)
         pos_init = self.A07[0:3, 3]
 
         # Set of positions to follow. The first position is the current position!
         P = [
             # x    y    z
-            pos_init,
-            (0.6043, -2, 0.1508),
-            (0.6043, -1, 0.1508),
+            (0.6043, 0.6, 0.1508),
+            (0.6043, 0.3, 0.2),
             (0.6043, 0.0e-6, 0.1508),
-            (0.6043, 1, 0.1508),
-            (0.6043, 2, 0.1508)
+            (0.6043, -0.3, 0.1508),
+            (0.6043, -0.4, 0.1508),
+            (0.6043, -0.6, 0.5)
         ]
 
         print(f"curent configuration : {self.joint_states.position}")
@@ -149,12 +135,19 @@ class xArm7_controller():
             if rospy.is_shutdown():
                break
                
-            rospy.loginfo(f"Publishing step {step_idx + 1}: {joint_set}")
+            rospy.loginfo(f"Requested Configuration: {joint_set}")
             self.joint_angpos = joint_set
            
             # Publish the new joint's angular positions
             for i in range(0, 7):
                 self.joint_pos_pub[i].publish(Float64(self.joint_angpos[i]))
+
+            # evaluate the position
+            rospy.loginfo(f"Actual Configuration: {self.joint_states.position}")
+            self.A07 = self.kinematics.tf_A07(self.joint_states.position)
+            pos_passed_from = self.A07[0:3, 3]
+            
+            rospy.loginfo(f"Position evaluated at: {pos_passed_from} / {P[step_idx]}")
 
             self.pub_rate.sleep()
 
@@ -177,3 +170,4 @@ if __name__ == '__main__':
         controller_py()
     except rospy.ROSInterruptException:
         pass
+
