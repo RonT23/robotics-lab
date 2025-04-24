@@ -21,8 +21,11 @@ import time as t
 from kinematics import xArm7_kinematics
 
 class xArm7_controller():
-    """Class to compute and publish joints positions"""
-    def __init__(self,rate):
+    """
+    Class to compute and publish joints positions
+    """
+    
+    def __init__(self, rate):
 
         #-------- Robot Manipulator Setup ---------------
 
@@ -57,40 +60,53 @@ class xArm7_controller():
         for i in range(0, 7):
             self.joint_pos_pub.append( rospy.Publisher(f'/xarm/joint{i+1}_position_controller/command', Float64, queue_size=1) )
 
+        # publishing period
+        self.pub_period   = 1.0 / rate
+
         # Set the publishing rate
-        self.period   = 1.0 / rate
-        self.pub_rate = rospy.Rate(rate)
+        self.pub_rate = rospy.Rate(2)
 
         # Start the main ROS loop
         self.publish()
+
+        #self.manual_control()
 
     def joint_states_callback(self, msg):
         self.joint_states = msg
 
     def home(self):
-        """Performs the homming operation of the robotic manipulator"""
-        # Set the roboti to the initial configuration
-        tmp_rate = rospy.Rate(1)
-        self.joint_angpos = self.home_position
-
+        """
+        Performs the homming operation of the robotic manipulator
+        """
         for i in [3, 1, 5]:
-            self.joint_pos_pub[i].publish(self.joint_angpos[i])
-            tmp_rate.sleep()
+            self.joint_pos_pub[i].publish(Float64(self.home_position[i]))
+            self.pub_rate.sleep()
 
-    def generate_circle_points(self):
-        radius = 0.8
-        center = (0.3, 0.3, 0.3)
-        num_points = 5
+    def manual_control(self):
+        rospy.loginfo("Manual joint control started. Enter 7 joint angles in radians separated by spaces.")
+        rospy.loginfo("Example: 0.0 0.5 -0.5 1.0 0.0 -0.2 0.3")
+        
+        while not rospy.is_shutdown():
+            try:
+                input_str = input("Enter joint angles (q1 q2 q3 q4 q5 q6 q7): ")
+                angles = list(map(float, input_str.strip().split()))
+                if len(angles) != 7:
+                    print("Please enter exactly 7 joint angles.")
+                    continue
 
-        theta = np.linspace(0, 2 * np.pi, num_points)
-        x_c, y_c, z_c = center
+                self.joint_angpos = angles
+                rospy.loginfo(f"Publishing joint angles: {self.joint_angpos}")
 
-        x_vals = x_c + radius * np.cos(theta)
-        y_vals = y_c + radius * np.sin(theta)
-        z_vals = np.full_like(x_vals, z_c)
+                for i in range(7):
+                    self.joint_pos_pub[i].publish(Float64(self.joint_angpos[i]))
 
-        points = list(zip(x_vals, y_vals, z_vals))
-        return points
+                self.pub_rate.sleep()
+
+            except ValueError:
+                print("Invalid input. Please enter 7 float numbers separated by spaces.")
+            except KeyboardInterrupt:
+                print("\nManual control terminated.")
+                break
 
     def publish(self):
         """
@@ -98,61 +114,47 @@ class xArm7_controller():
         Position control on joints q1, q2 and q4 for a linear path on x = 0.6043 and z = 0.1508
         The points A and B are set to 40 cm appart and symmetric along x-axis.
         """
-        #rospy.loginfo("Setting device to home")
 
-        #self.home()
-        #self.pub_rate.sleep()
-
+        # rospy.loginfo("Device is set to home position")
         rospy.loginfo("The system is ready to execute the path-following algorithm")
 
-        P = [ (0.6043, 1.2, 0.1508),
-              (0.6043, -1.2, 0.1506)
+        # get the current configuration
+        while len(self.joint_states.position) == 0:
+            pass
+        
+        for i in range(0, 7):
+            self.joint_angpos[i] = self.joint_states.position[i]
+        
+        # find the current possition
+        self.A07 = self.kinematics.tf_A07(self.joint_angpos)
+        pos_init = self.A07[0:3, 3]
+
+        # Set of positions to follow. The first position is the current position!
+        P = [
+            # x    y    z
+            pos_init,
+            (0.6043, -2, 0.1508),
+            (0.6043, -1, 0.1508),
+            (0.6043, 0.0e-6, 0.1508),
+            (0.6043, 1, 0.1508),
+            (0.6043, 2, 0.1508)
         ]
 
-        P = self.generate_circle_points()
-        print(P)
+        print(f"curent configuration : {self.joint_states.position}")
 
-        # First the robot must drive from current position to target position A
-        # Next the robot must drive from position A to intermediate positions
-        # as produced by a linear interpolation algorithm
-        # From point-to-point we perform position control, 
-        # impling that the current position compared with the target
+        # Compute the joint positions for each of the coordinates provided
+        Q = [self.kinematics.compute_angles(p) for p in P]
 
-        next_pos_index = 0
-
-        rospy.loginfo(f"The first target is at : {P[next_pos_index]}")
-
-        #for i in range(0, 7):
-        #    self.joint_angpos[i] = self.joint_states.position[i]
-
-        while not rospy.is_shutdown():
-            
-            
-            self.A07 = self.kinematics.tf_A07(self.joint_angpos)
-            
-            # Compute the current position from the kinematic equation
-            Pcurrent = self.A07[0:3,3]
-            Pnext    = P[next_pos_index]
-            
-            print(f'{Pcurrent}:{Pnext}')
-
-            # Compute the joint position of the target 
-            self.joint_angpos = self.kinematics.compute_angles(Pnext)
-            
-            if np.allclose(Pcurrent, Pnext, atol=1e-2): # tolerance of 0.0004 m of difference
-                next_pos_index = next_pos_index + 1
-                rospy.loginfo(f"Setting the next target position at : {P[next_pos_index]}")
-
-            #print(self.joint_states.position)
-
+        for step_idx, joint_set in enumerate(Q):
+            if rospy.is_shutdown():
+               break
+               
+            rospy.loginfo(f"Publishing step {step_idx + 1}: {joint_set}")
+            self.joint_angpos = joint_set
+           
             # Publish the new joint's angular positions
             for i in range(0, 7):
-                self.joint_pos_pub[i].publish(self.joint_angpos[i])
-
-            if np.allclose(Pcurrent, Pnext, atol=1e-2) and next_pos_index == len(P):
-                # the taks is complete, break the loop
-                rospy.loginfo("Task complete")
-                break
+                self.joint_pos_pub[i].publish(Float64(self.joint_angpos[i]))
 
             self.pub_rate.sleep()
 

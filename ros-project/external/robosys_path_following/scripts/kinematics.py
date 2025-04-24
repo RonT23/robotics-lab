@@ -36,11 +36,37 @@ class xArm7_kinematics():
         """
         P_ex, P_ey, P_ez = ee_position
 
-        joint_1 = math.atan2(P_ex, P_ey)
+        # compute joint 1 position
+        q1 = math.atan2(P_ex, P_ey)
         
-        joint_2 = 0.0
+
+        # transform the robot arm projection
+        s1 = self.l4 * np.sin(self.theta1)
+        s2 = self.l5 * np.sin(self.theta2)
+        s3 = self.l4 * np.cos(self.theta1)
+        s4 = self.l5 * np.cos(self.theta2)
+        
+        L1 = np.sqrt(self.l2**2 + self.l3**2)
+        L2 = np.sqrt(self.l4**2 + self.l5**2 + 2 * self.l4 * self.l5 * np.cos(self.theta1 + self.theta2))
+
+        # Compute the new angle for joint 4
+        beta = math.atan((s3 + s4)/(s1 + s2)) - math.atan(s3/s4)
+        
+        cos_q4_dot = (P_ex**2 + P_ez**2 - L1**2 - L2**2)
+        sin_q4_dot = np.sqrt(1 - np.cos(cos_q4_dot))
+        
+        # get the transformed joint value
+        q4_dot = math.atan2(sin_q4_dot, cos_q4_dot)
+
+        # inverse the transform
+        q4 = q4_dot + self.theta1 + beta
+
+        q2 = 0.0
+
+        joint_1 = q1
+        joint_2 = q2
         joint_3 = 0.0
-        joint_4 = 0.0
+        joint_4 = q4
         joint_5 = 0.0
         joint_6 = 0.75
         joint_7 = 0.0
