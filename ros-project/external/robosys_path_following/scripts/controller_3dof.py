@@ -50,7 +50,7 @@ class xArm7_controller():
             self.joint_pos_pub.append( rospy.Publisher(f'/xarm/joint{i+1}_position_controller/command', Float64, queue_size=1) )
 
         # Set the publishing rate
-        self.pub_rate = rospy.Rate(1)
+        self.pub_rate = rospy.Rate(10)
 
         # Start the main ROS loop
         self.publish()
@@ -108,46 +108,25 @@ class xArm7_controller():
         while len(self.joint_states.position) == 0:
             pass
         
-        for i in range(0, 7):
-            self.joint_angpos[i] = self.joint_states.position[i]
-        
-        # find the current possition (forward kinematics)
-        self.A07 = self.kinematics.tf_A07(self.joint_angpos)
-        pos_init = self.A07[0:3, 3]
-
         # Set of positions to follow. The first position is the current position!
-        P = [
-            # x    y    z
-            (0.6043, 0.6, 0.1508),
-            (0.6043, 0.3, 0.2),
-            (0.6043, 0.0e-6, 0.1508),
-            (0.6043, -0.3, 0.1508),
-            (0.6043, -0.4, 0.1508),
-            (0.6043, -0.6, 0.5)
-        ]
-
+        P = [ (0.6043, y, 0.1508) for y in np.arange(-0.2, 0.2, 0.01)]
+        
         print(f"curent configuration : {self.joint_states.position}")
 
         # Compute the joint positions for each of the coordinates provided
         Q = [self.kinematics.compute_angles(p) for p in P]
 
-        for step_idx, joint_set in enumerate(Q):
+        for _, joint_set in enumerate(Q):
             if rospy.is_shutdown():
                break
                
             rospy.loginfo(f"Requested Configuration: {joint_set}")
+            rospy.loginfo(f"Computed Forwad Kinematics: {self.kinematics.tf_A07(joint_set)[0:3, 3]}")
             self.joint_angpos = joint_set
            
             # Publish the new joint's angular positions
             for i in range(0, 7):
                 self.joint_pos_pub[i].publish(Float64(self.joint_angpos[i]))
-
-            # evaluate the position
-            rospy.loginfo(f"Actual Configuration: {self.joint_states.position}")
-            self.A07 = self.kinematics.tf_A07(self.joint_states.position)
-            pos_passed_from = self.A07[0:3, 3]
-            
-            rospy.loginfo(f"Position evaluated at: {pos_passed_from} / {P[step_idx]}")
 
             self.pub_rate.sleep()
 
@@ -170,4 +149,3 @@ if __name__ == '__main__':
         controller_py()
     except rospy.ROSInterruptException:
         pass
-
