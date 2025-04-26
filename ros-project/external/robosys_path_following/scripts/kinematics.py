@@ -39,40 +39,63 @@ class xArm7_kinematics():
         # compute joint 1 position
         q1 = math.atan2(P_ey, P_ex)
         
-        if q1 == np.pi/2 or q1 == -np.pi/2:
-            q1 = q1 + (q1/abs(q1)) * 0.001
+        # prevent division by zero
+        if abs(abs(q1) - np.pi/2) < 1e-3:
+            q1 += (1 if q1 > 0 else -1)
 
+        # project target into XZ plane
         x = P_ex / np.cos(q1)
-        z = P_ez - self.l1
-        r = x**2 + z**2
+        
+        # My version z
+        z = -P_ez + self.l1
 
+        # Thodoris version z
+        #z = P_ez + self.l1 
+
+        # compute planar distance
+        r = x**2 + z**2
+        
         # transform the robot arm projection
         L1 = np.sqrt(self.l2**2 + self.l3**2)
         
-        s1 = self.l4 * np.cos(self.theta1)
-        s2 = self.l5 * np.cos(self.theta2)
-        s3 = self.l4 * np.sin(self.theta1)
-        s4 = self.l5 * np.sin(self.theta2)
+        t1 = self.l4 * np.cos(self.theta1)
+        t2 = self.l5 * np.cos(self.theta2)
         
-        Lx = s3 + s4 
-        Ly = s1 + s2 
+        t3 = self.l4 * np.sin(self.theta1)
+        t4 = self.l5 * np.sin(self.theta2)
+        
+        Lx = t3 + t4 
+        Ly = t1 + t2 
 
         L2 = np.sqrt(Lx**2 + Ly**2)
+        
+        # My version
+        # Compute the new angle for joint 4 
+        beta  = math.atan(Lx / Ly) - self.theta1
+        alpha = math.atan(self.l3 / self.l2)
 
-        # Compute the new angle for joint 4
-        Delta = math.atan(Lx / Ly)
-        beta = Delta - self.theta1
-        alpha = math.atan(self.l3/self.l2)
+        # compute projected joint 2
+        cos_q4_dot  = (r - L1**2 - L2**2) / (2 * L1 * L2)
+        sin_q4_dot  = np.sqrt(1 - cos_q4_dot**2)
+        q4_dot      = math.atan2(sin_q4_dot, cos_q4_dot)
+        
+        # compute projected joint 1
+        sin_q2_dot  = (z * (L1 + L2 * cos_q4_dot) - x * L2 * sin_q4_dot) / (L1**2 + L2**2 + 2*L1*L2*cos_q4_dot)
+        cos_q2_dot  = np.sqrt(1 - sin_q2_dot**2)
+        q2_dot      = math.atan2(sin_q2_dot, cos_q2_dot)
+        
+        # revert the projection
+        q2 = -q2_dot - alpha
+        q4 =  q4_dot - beta - self.theta1
+        
+        # # Thodoris Version
+        # phi  = (r - L1**2 - L2**2) / (2 * L1 * L2)
+        # Delta  = math.atan(Lx / Ly)
+        # q4 = phi - self.theta1 - Delta
 
-        cos_q4_dot = (r - L1**2 - L2**2) / (2 * L1 * L2)
-        sin_q4_dot = np.sqrt(1 - cos_q4_dot**2)
-        q4_dot = math.atan2(sin_q4_dot, cos_q4_dot)
-        q4 = q4_dot - self.theta1 - beta
-
-        sin_q2_dot = (x * (L1 + L2 * cos_q4_dot) - z * L2 * sin_q4_dot) / (L1**2 + L2**2 + 2*L1*L2*cos_q4_dot)
-        cos_q2_dot = np.sqrt(1 - sin_q2_dot**2)
-        q2_dot = math.atan2(sin_q2_dot, cos_q2_dot)
-        q2 = -q2_dot + np.pi/2 - alpha  
+        # beta = math.atan(z/x)
+        # gamma = math.acos((L1**2 + r - L2**2) / (2*L1*np.sqrt(r)))
+        # q2 = beta - gamma
 
         joint_1 = q1
         joint_2 = q2
@@ -144,6 +167,7 @@ class xArm7_kinematics():
                         [ J_61 , J_62 , J_63 , J_64 , J_65 , J_66 , J_67 ]])
         return J
 
+    # Homogeneous transforms
     def tf_A01(self, r_joints_array):
         q1 = r_joints_array[0]
         c1, s1 = np.cos(q1), np.sin(q1)
@@ -168,7 +192,7 @@ class xArm7_kinematics():
 
     def tf_A03(self, r_joints_array):
 
-        q3 = r_joints_array[1]
+        q3 = r_joints_array[2]
         c3, s3 = np.cos(q3), np.sin(q3)
 
         tf_A23 = np.matrix([[c3 , -s3 , 0 , 0],\
@@ -180,7 +204,7 @@ class xArm7_kinematics():
 
     def tf_A04(self, r_joints_array):
 
-        q4 = r_joints_array[1]
+        q4 = r_joints_array[3]
         c4, s4 = np.cos(q4), np.sin(q4)
 
         tf_A34 = np.matrix([[c4 , -s4 , 0 , self.l3],\
@@ -192,11 +216,11 @@ class xArm7_kinematics():
 
     def tf_A05(self, r_joints_array):
 
-        q5 = r_joints_array[1]
+        q5 = r_joints_array[4]
         c5, s5 = np.cos(q5), np.sin(q5)
 
-        tf_A45 = np.matrix([[c5 , -s5 , 0 , 0.22 * self.l4],\
-                            [0 , 0 , -1 , -0.975 * self.l4],\
+        tf_A45 = np.matrix([[c5 , -s5 , 0 , np.sin(self.theta1) * self.l4],\
+                            [0 , 0 , -1 ,  -np.cos(self.theta1) * self.l4],\
                             [s5 , c5 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A04(r_joints_array), tf_A45 )
@@ -204,7 +228,7 @@ class xArm7_kinematics():
 
     def tf_A06(self, r_joints_array):
 
-        q6 = r_joints_array[1]
+        q6 = r_joints_array[5]
         c6, s6 = np.cos(q6), np.sin(q6)
 
         tf_A56 = np.matrix([[c6 , -s6 , 0 , 0],\
@@ -216,11 +240,11 @@ class xArm7_kinematics():
 
     def tf_A07(self, r_joints_array):
 
-        q7 = r_joints_array[1]
+        q7 = r_joints_array[6]
         c7, s7 = np.cos(q7), np.sin(q7)
 
-        tf_A67 = np.matrix([[c7 , -s7 , 0 , 0.62 * self.l5],\
-                            [0 , 0 , 1 , 0.788 * self.l5],\
+        tf_A67 = np.matrix([[c7 , -s7 , 0 , np.sin(self.theta2) * self.l5],\
+                            [0 , 0 , 1 ,  np.cos(self.theta2) * self.l5],\
                             [-s7 , -c7 , 0 , 0],\
                             [0 , 0 , 0 , 1]])
         tf = np.dot( self.tf_A06(r_joints_array), tf_A67 )
@@ -247,3 +271,4 @@ class xArm7_kinematics():
             z = 0
 
         return np.array([x, y, z])
+
