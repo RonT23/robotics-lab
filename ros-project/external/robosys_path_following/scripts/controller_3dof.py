@@ -15,10 +15,9 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
 
 import numpy as np
-from numpy.linalg import inv, det, norm, pinv
-import time as t
 
 from kinematics import xArm7_kinematics
+from kinematics import interpolate_points
 
 class xArm7_controller():
     """
@@ -50,6 +49,7 @@ class xArm7_controller():
             self.joint_pos_pub.append(rospy.Publisher(f'/xarm/joint{i+1}_position_controller/command', Float64, queue_size=1))
 
         # Set the publishing rate
+        self.rate = rate
         self.pub_rate = rospy.Rate(rate)
 
         # Start the main ROS loop
@@ -84,6 +84,7 @@ class xArm7_controller():
                 print("\nManual control terminated.")
                 break
     
+    # Functions used for evaluation and debugging
     def print_current_joint_position(self, extra_msg=None):
         print(f"\nCurrent Joint Positions {extra_msg}")
         joint_positions = self.joint_states.position
@@ -120,27 +121,20 @@ class xArm7_controller():
         for i, p in enumerate(ee_position):
             value = np.asscalar(p) if hasattr(np, 'asscalar') else p.item()
             print(f"Pe{label[i]} : {value:.4f}")
+    ###
 
+    # Main function that implements the control algorithm
     def path_following_algorithm(self, P=None, tolerance=1e-3):
         """
         Implements a simple linear path following algorithm
         @param P: The set of waypoints the robot should pass
         @return : False if ROS server is off, True when the path is complete
         """
-        # here I will add a linear interpolation algorithm function call!
-        # for now assume constant path for testing
-        # overwrite the given values of P!
-        P = [ (0.5043, y, 0.15) for y in np.arange(-0.2, 0.2, 0.01)]
-        
-        # P = [
-        #      (0.6043, -0.2, 0.15), 
-        #      (0.6043, 0.3, 0.18), 
-        #      (0.5043, -0.2, 0.20), 
-        #      (0.6043, 0.1, 0.25)
-        #     ]
-
         # compute the joint positions for the target path
+        print("\nComputing the inverse kinematics for each waypoint in P...")
         Q = [self.kinematics.compute_angles(p) for p in P]
+
+        print("\nConfigurations computed, running the controller...")
 
         # iterate over the joint positions
         for idx, joint_set in enumerate(Q):
@@ -180,10 +174,9 @@ class xArm7_controller():
                 
                 error_max = max([q1_error, q2_error, q4_error])
 
-                print(f"\n q1 Error : {q1_error} rad")
-                print(f"\n q2 Error : {q2_error} rad")
-                print(f"\n q4 Error : {q4_error} rad")
+                print(f"\n q1 Error : {q1_error} | q2 Error : {q2_error} | q3 Error : {q4_error}")
                 
+                # check the error threshold
                 if error_max > tolerance:
                     self.pub_rate.sleep()
                 else:
@@ -198,6 +191,7 @@ class xArm7_controller():
             # compute the forward kinematics using the target angle configuration
             self.print_target_fk_solution(self.joint_angpos)
 
+        print("\nTask Complete. Exiting!")
         return True
 
     def publish(self):
@@ -225,14 +219,21 @@ class xArm7_controller():
 
         self.print_current_joint_position(extra_msg="-After Initialization")
         self.print_current_ee_position(extra_msg="-After Initialization")
-            
+        
+        ### User-specified positions
+        P0 = [0.6043, 0.4, 0.1508]
+        P1 = [0.6043, -0.3, 0.1508]
+        ###
+
+        P = interpolate_points(P0, P1, self.rate)
+
         # flag that indicates termination of the algorithm
         target_reached = False 
         while not rospy.is_shutdown():
             
             # execution of the algorithm
             if not target_reached:
-                target_reached = self.path_following_algorithm(tolerance=0.015)
+                target_reached = self.path_following_algorithm(tolerance=0.015, P=P)
             else:
                 break
  
