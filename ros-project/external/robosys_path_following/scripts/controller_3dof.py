@@ -19,6 +19,9 @@ import numpy as np
 from kinematics import xArm7_kinematics
 from kinematics import interpolate_points
 
+C_USER_TASK_FILE = "task_file.txt"
+C_DEBUG_MODE     = False             
+
 class xArm7_controller():
     """
     Class to compute and publish joints positions
@@ -114,7 +117,7 @@ class xArm7_controller():
             print(f"Pt{label[i]} : {p:.4f}")
     
     def print_target_fk_solution(self, position):
-        print(f"\nComputed IK End Effector Position")
+        print(f"\nComputed Position from IK solutions")
         ee_position = self.kinematics.tf_A07(position)[0:3, 3]
         label = ["x", "y", "z"]
 
@@ -123,7 +126,8 @@ class xArm7_controller():
             print(f"Pe{label[i]} : {value:.4f}")
     ###
 
-    # Main function that implements the control algorithm
+    # Main function that implements the control algorithm as reqested 
+    # in part A of the project requirements
     def path_following_algorithm(self, P=None, tolerance=1e-3):
         """
         Implements a simple linear path following algorithm
@@ -131,27 +135,26 @@ class xArm7_controller():
         @return : False if ROS server is off, True when the path is complete
         """
         # compute the joint positions for the target path
-        print("\nComputing the inverse kinematics for each waypoint in P...")
         Q = [self.kinematics.compute_angles(p) for p in P]
-
-        print("\nConfigurations computed, running the controller...")
 
         # iterate over the joint positions
         for idx, joint_set in enumerate(Q):
+            
+            if not C_DEBUG_MODE:
+                print(f"\r PROGRESS: {round(idx / len(Q) * 100.0, 2)}%", end="", flush=True)
             
             self.joint_angpos  = joint_set
 
             if rospy.is_shutdown():
                 return False
 
-            # print the target end effector position ()
-            self.print_target_joint_position(self.joint_angpos)
-            self.print_target_ee_position(P[idx])
+            if C_DEBUG_MODE:
+                self.print_target_ee_position(P[idx])
+                self.print_current_ee_position(extra_msg="-Before Command")
+                self.print_target_joint_position(self.joint_angpos)
+                self.print_current_joint_position(extra_msg="-Before Command")
+                self.print_target_fk_solution(self.joint_angpos)
 
-            # print the current joint positions (before the command)
-            self.print_current_joint_position(extra_msg="-Before Command")
-            self.print_current_ee_position(extra_msg="-Before Command")
-            
             # publish the new joint's angular positions
             self.joint_pos_pub[0].publish(self.joint_angpos[0])
             self.joint_pos_pub[1].publish(self.joint_angpos[1])
@@ -174,26 +177,55 @@ class xArm7_controller():
                 
                 error_max = max([q1_error, q2_error, q4_error])
 
-                print(f"\n q1 Error : {q1_error} | q2 Error : {q2_error} | q3 Error : {q4_error}")
+                if C_DEBUG_MODE:
+                    print(f"q1 Error : {q1_error} | q2 Error : {q2_error} | q3 Error : {q4_error}")
                 
                 # check the error threshold
                 if error_max > tolerance:
                     self.pub_rate.sleep()
                 else:
                     break
-
-                break
             
-            # print the current joint positions (after the command)
-            self.print_current_joint_position(extra_msg="-After Command")
-            self.print_current_ee_position(extra_msg="-After Command")
+            if C_DEBUG_MODE:
+                self.print_current_ee_position(extra_msg="-After Command")
 
-            # compute the forward kinematics using the target angle configuration
-            self.print_target_fk_solution(self.joint_angpos)
-
-        print("\nTask Complete. Exiting!")
+        if not C_DEBUG_MODE:
+            print("\r PROGRESS: Complete!", end="", flush=True)
+        
         return True
 
+    def read_task_file(self, filename):
+        """
+        This function reads and decodes the user-specified commands from the 
+        given TXT file. The source code is a modification of the code used for 
+        controlling the NVIDIA's myCobot Jetson Cobot in lab 4.
+        @param filename: The file that contains the robot task.
+        @return a list of coordinate points for the robot to follow.
+        """
+        try:
+            with open(filename, "r") as f:
+                ft_list = f.readlines() # read all lines in the dile
+        except FileNotFoundError: 
+            print("ERROR: The file was not found")
+        except IOError:
+            print("ERROR: An I/O error occured while trying to read the file")
+        
+        P = []
+        for line in ft_list:
+            
+            if line.find("set_coords:") != -1:
+                try:
+                    coords_str = line.split(": ")[1]
+                    x, y, z = map(float, coords_str.split(","))
+                    P.append((x, y, z))
+                except (ValueError, IndexError) as e: 
+                    print("WARNING: Invalid line : ", e)
+                    continue 
+            else:
+                print("ERROR: This version implemets only one commad!")
+        
+        return P
+     
     def publish(self):
         """
         Implements the task 1:
@@ -213,30 +245,42 @@ class xArm7_controller():
         self.joint_pos_pub[1].publish(self.joint_angpos[1])
         self.joint_pos_pub[5].publish(self.joint_angpos[5])
         tmp_rate.sleep()
+        ##
 
-        rospy.loginfo("Device is set to initial configuration")
-        rospy.loginfo("The system is ready to execute the path-following algorithm")
-
-        self.print_current_joint_position(extra_msg="-After Initialization")
-        self.print_current_ee_position(extra_msg="-After Initialization")
-        
-        ### User-specified positions
-        P0 = [0.6043, 0.4, 0.1508]
-        P1 = [0.6043, -0.3, 0.1508]
-        ###
-
-        P = interpolate_points(P0, P1, self.rate)
-
-        # flag that indicates termination of the algorithm
-        target_reached = False 
-        while not rospy.is_shutdown():
+        if C_DEBUG_MODE:
+            self.print_current_joint_position(extra_msg="-After Initialization")
+            self.print_current_ee_position(extra_msg="-After Initialization")
             
-            # execution of the algorithm
-            if not target_reached:
-                target_reached = self.path_following_algorithm(tolerance=0.015, P=P)
-            else:
-                break
- 
+        # append the callculated positions to the current position
+        P_to_run = []
+        P_to_run.append(self.kinematics.tf_A07(self.joint_states.position))
+        
+        # read the user-specified waypoints file
+        P_user = self.read_task_file(C_USER_TASK_FILE)
+        P_to_run.extend(P_user)
+
+        if C_DEBUG_MODE:
+            print(f"\nUser-defined waypoints:\n{P_user}")
+
+        while not rospy.is_shutdown():
+
+            for i in range(0, len(P_user)-1):        
+                # get a pair of points
+                P0 = P_user[i]
+                P1 = P_user[i+1]  
+
+                # interpolate linearly
+                P = interpolate_points(P0, P1, self.rate)
+
+                print(f"\n TASK: {P0} ==> {P1} \n", end="")
+
+                # command the robot
+                self.path_following_algorithm(tolerance=0.0001, P=P)
+                
+            break
+        
+        print("INFO: Task Complete!")
+        
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")
         sys.exit(0)
