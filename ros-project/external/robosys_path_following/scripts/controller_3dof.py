@@ -17,7 +17,10 @@ from sensor_msgs.msg import JointState
 import numpy as np
 
 from kinematics import xArm7_kinematics
-from kinematics import interpolate_points
+
+# Additional utility functions created
+from utils import interpolate_points
+from utils import read_task_file
 
 C_USER_TASK_FILE = "task_file.txt"
 C_DEBUG_MODE     = False             
@@ -36,9 +39,6 @@ class xArm7_controller():
         # Initial joints' angular positions
         self.joint_angpos = [0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0]
         
-        # Position set for home
-        self.home_position = [0.0, 0.0,  0.0, 0.0, 0.0, 0.75, 0.0]
-
         # Initial joints' states
         self.joint_states = JointState()
 
@@ -61,74 +61,9 @@ class xArm7_controller():
     def joint_states_callback(self, msg):
         self.joint_states = msg
 
-    def manual_control(self):
-        rospy.loginfo("Manual joint control started. Enter 7 joint angles in radians separated by spaces.")
-        rospy.loginfo("Example: 0.0 0.5 -0.5 1.0 0.0 -0.2 0.3")
-        
-        while not rospy.is_shutdown():
-            try:
-                input_str = input("Enter joint angles (q1 q2 q3 q4 q5 q6 q7): ")
-                angles = list(map(float, input_str.strip().split()))
-                if len(angles) != 7:
-                    print("Please enter exactly 7 joint angles.")
-                    continue
-
-                self.joint_angpos = angles
-                rospy.loginfo(f"Publishing joint angles: {self.joint_angpos}")
-
-                for i in range(7):
-                    self.joint_pos_pub[i].publish(Float64(self.joint_angpos[i]))
-
-                self.pub_rate.sleep()
-
-            except ValueError:
-                print("Invalid input. Please enter 7 float numbers separated by spaces.")
-            except KeyboardInterrupt:
-                print("\nManual control terminated.")
-                break
-    
-    # Functions used for evaluation and debugging
-    def print_current_joint_position(self, extra_msg=None):
-        print(f"\nCurrent Joint Positions {extra_msg}")
-        joint_positions = self.joint_states.position
-        for joint, position in enumerate(joint_positions):
-            print(f"Joint_{joint} : {position}")
-
-    def print_target_joint_position(self, position):
-        print("\nTarget Joint Positions")
-        for joint, position in enumerate(position):
-            print(f"Joint_{joint} : {position}")
-
-    def print_current_ee_position(self, extra_msg=None):
-        print(f"\nCurrent End Effector Position {extra_msg}")
-        joint_positions = self.joint_states.position
-        ee_position = self.kinematics.tf_A07(joint_positions)[0:3, 3]
-        label = ["x", "y", "z"]
-
-        for i, p in enumerate(ee_position):
-            value = np.asscalar(p) if hasattr(np, 'asscalar') else p.item()
-            print(f"Pe{label[i]} : {value:.4f}")
-    
-    def print_target_ee_position(self, position):
-        print("\nTarget End Effector Position")
-        label = ["x", "y", "z"]
-
-        for i, p in enumerate(position):
-            print(f"Pt{label[i]} : {p:.4f}")
-    
-    def print_target_fk_solution(self, position):
-        print(f"\nComputed Position from IK solutions")
-        ee_position = self.kinematics.tf_A07(position)[0:3, 3]
-        label = ["x", "y", "z"]
-
-        for i, p in enumerate(ee_position):
-            value = np.asscalar(p) if hasattr(np, 'asscalar') else p.item()
-            print(f"Pe{label[i]} : {value:.4f}")
-    ###
-
     # Main function that implements the control algorithm as reqested 
     # in part A of the project requirements
-    def path_following_algorithm(self, P=None, tolerance=1e-3):
+    def position_control_algorithm(self, P=None, tolerance=1e-3):
         """
         Implements a simple linear path following algorithm
         @param P: The set of waypoints the robot should pass
@@ -194,43 +129,53 @@ class xArm7_controller():
         
         return True
 
-    def read_task_file(self, filename):
-        """
-        This function reads and decodes the user-specified commands from the 
-        given TXT file. The source code is a modification of the code used for 
-        controlling the NVIDIA's myCobot Jetson Cobot in lab 4.
-        @param filename: The file that contains the robot task.
-        @return a list of coordinate points for the robot to follow.
-        """
-        try:
-            with open(filename, "r") as f:
-                ft_list = f.readlines() # read all lines in the dile
-        except FileNotFoundError: 
-            print("ERROR: The file was not found")
-        except IOError:
-            print("ERROR: An I/O error occured while trying to read the file")
-        
-        P = []
-        for line in ft_list:
-            
-            if line.find("set_coords:") != -1:
-                try:
-                    coords_str = line.split(": ")[1]
-                    x, y, z = map(float, coords_str.split(","))
-                    P.append((x, y, z))
-                except (ValueError, IndexError) as e: 
-                    print("WARNING: Invalid line : ", e)
-                    continue 
-            else:
-                print("ERROR: This version implemets only one commad!")
-        
-        return P
+    # Functions used for evaluation and debugging
+    def print_current_joint_position(self, extra_msg=None):
+        print(f"\nCurrent Joint Positions {extra_msg}")
+        joint_positions = self.joint_states.position
+        for joint, position in enumerate(joint_positions):
+            print(f"Joint_{joint} : {position}")
+
+    def print_target_joint_position(self, position):
+        print("\nTarget Joint Positions")
+        for joint, position in enumerate(position):
+            print(f"Joint_{joint} : {position}")
+
+    def print_current_ee_position(self, extra_msg=None):
+        print(f"\nCurrent End Effector Position {extra_msg}")
+        joint_positions = self.joint_states.position
+        ee_position = self.kinematics.tf_A07(joint_positions)[0:3, 3]
+        label = ["x", "y", "z"]
+
+        for i, p in enumerate(ee_position):
+            value = np.asscalar(p) if hasattr(np, 'asscalar') else p.item()
+            print(f"Pe{label[i]} : {value:.4f}")
+
+    def print_target_ee_position(self, position):
+        print("\nTarget End Effector Position")
+        label = ["x", "y", "z"]
+
+        for i, p in enumerate(position):
+            print(f"Pt{label[i]} : {p:.4f}")
+
+    def print_target_fk_solution(self, position):
+        print(f"\nComputed Position from IK solutions")
+        ee_position = self.kinematics.tf_A07(position)[0:3, 3]
+        label = ["x", "y", "z"]
+
+        for i, p in enumerate(ee_position):
+            value = np.asscalar(p) if hasattr(np, 'asscalar') else p.item()
+            print(f"Pe{label[i]} : {value:.4f}")
+    ###
      
     def publish(self):
         """
         Implements the task 1:
-        Position control on joints q1, q2 and q4 for a linear path on x = 0.6043 and z = 0.1508
-        The points A and B are set to 40 cm appart and symmetric along x-axis.
+        Position control on joints q1, q2 and q4 for a linear path 
+        Requested the line with x = 0.6043 and z = 0.1508
+        and points A and B set to 40 cm appart and symmetric along x-axis.
+        However this script is capable of reading a user-defined high-level
+        task description script.
         """
     
         # set initial configuration
@@ -252,12 +197,14 @@ class xArm7_controller():
             self.print_current_ee_position(extra_msg="-After Initialization")
             
         # append the callculated positions to the current position
-        P_to_run = []
-        P_to_run.append(self.kinematics.tf_A07(self.joint_states.position))
+        P_task = []
+        P_task.append(self.kinematics.tf_A07(self.joint_states.position))
         
         # read the user-specified waypoints file
-        P_user = self.read_task_file(C_USER_TASK_FILE)
-        P_to_run.extend(P_user)
+        P_user = read_task_file(C_USER_TASK_FILE)
+
+        # append the user-specified waypoints in the current position
+        P_task.extend(P_user)
 
         if C_DEBUG_MODE:
             print(f"\nUser-defined waypoints:\n{P_user}")
@@ -271,16 +218,17 @@ class xArm7_controller():
 
                 # interpolate linearly
                 P = interpolate_points(P0, P1, self.rate)
-
+                
                 print(f"\n TASK: {P0} ==> {P1} \n", end="")
 
                 # command the robot
-                self.path_following_algorithm(tolerance=0.0001, P=P)
+                self.position_control_algorithm(tolerance=0.0001, P=P)
                 
             break
         
-        print("INFO: Task Complete!")
-        
+        print("\nINFO: Task Complete!")
+        print("INFO: Press Ctrl + C to terminate")
+
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")
         sys.exit(0)
@@ -299,4 +247,3 @@ if __name__ == '__main__':
         controller_py()
     except rospy.ROSInterruptException:
         pass
-

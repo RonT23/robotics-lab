@@ -7,24 +7,7 @@ Compute state space kinematic matrices for xArm7 robot arm (5 links, 7 joints)
 import numpy as np
 import math
 
-def interpolate_points(P0, P1, n):
-    """
-    This function is used to interpolate two points in space using linear interpolation 
-    @param P0 : the initial position in (X, Y, Z)
-    @param P1 : the final position in (X, Y, Z)
-    @param n  : the number of interpolated values to produce
-    @return   : returns the set of interpolated positions
-    """
-    P0 = np.array(P0, dtype=float)
-    P1 = np.array(P1, dtype=float)
-
-    linear_points    = []
-
-    # main interpolation loop
-    for t in np.linspace(0, 1, n + 2):
-        linear_points.append(P0 + (P1 - P0) * t )
-
-    return np.array(linear_points)
+from utils import Rot, Tra
 
 # Checks if a matrix is a valid rotation matrix.
 def isRotationMatrix(R) :
@@ -103,7 +86,6 @@ class xArm7_kinematics():
 
         return joint_angles
 
-    # DK
     def compute_jacobian(self, r_joints_array):
 
         J_11 = 0
@@ -162,88 +144,45 @@ class xArm7_kinematics():
                         [ J_61 , J_62 , J_63 , J_64 , J_65 , J_66 , J_67 ]])
         return J
 
-    # Foundamental transformation operations
-    def Rot(self, axis, angle):
-        """
-        Construct a 4x4 rotation matrix about a given axis.
-        """
-        R = np.eye(4)
-        c = np.cos(angle)
-        s = np.sin(angle)
-
-        if axis == "x":
-            R[1, 1] = c;  R[1, 2] = -s
-            R[2, 1] = s;  R[2, 2] = c
-        elif axis == "y":
-            R[0, 0] = c;  R[0, 2] = s
-            R[2, 0] = -s; R[2, 2] = c
-        elif axis == "z":
-            R[0, 0] = c;  R[0, 1] = -s
-            R[1, 0] = s;  R[1, 1] = c
-        else:
-            print("[ERROR] Rot : Invalid axis. Returning identity.")
-        return R
-
-    def Tra(self, axis, displacement):
-        """
-        Construct a 4x4 translation matrix along a given axis.
-        """
-        T = np.eye(4)
-        if axis == "x":
-            T[0, 3] = displacement
-        elif axis == "y":
-            T[1, 3] = displacement
-        elif axis == "z":
-            T[2, 3] = displacement
-        else:
-            print("[ERROR] Tra : Invalid axis. Returning identity.")
-        return T
-    
     # Homogeneous transforms
     def tf_A01(self, r_joints_array):
         q1 = r_joints_array[0]
-        tf =  self.Rot("z", q1) @ self.Tra("z", self.l1)
+        tf =  Rot("z", q1) @ Tra("z", self.l1)
         return tf
 
     def tf_A02(self, r_joints_array):
-        
         q2 = r_joints_array[1]
-        tf_A12 = self.Rot("x", -np.pi/2) @ self.Rot("z", q2)
+        tf_A12 = Rot("x", -np.pi/2) @ Rot("z", q2)
         tf = np.dot( self.tf_A01(r_joints_array), tf_A12 )
         return tf
 
     def tf_A03(self, r_joints_array):
-
         q3 = r_joints_array[2]
-        tf_A23 = self.Rot("x", np.pi/2) @ self.Rot("z", q3) @ self.Tra("z", self.l2)
+        tf_A23 = Rot("x", np.pi/2) @ Rot("z", q3) @ Tra("z", self.l2)
         tf = np.dot( self.tf_A02(r_joints_array), tf_A23 )
         return tf
 
     def tf_A04(self, r_joints_array):
-
         q4 = r_joints_array[3]
-        tf_A34 = self.Rot("x", np.pi/2) @ self.Tra("x", self.l3) @ self.Rot("z", q4)
+        tf_A34 = Rot("x", np.pi/2) @ Tra("x", self.l3) @ Rot("z", q4)
         tf = np.dot( self.tf_A03(r_joints_array), tf_A34 )
         return tf
 
     def tf_A05(self, r_joints_array):
-
         q5 = r_joints_array[4]
-        tf_A45 = self.Rot("x", np.pi/2) @ self.Tra("x", self.l4 * np.sin(self.theta1)) @ self.Rot("z", q5) @ self.Tra("z", self.l4 * np.cos(self.theta1)) 
+        tf_A45 = Rot("x", np.pi/2) @ Tra("x", self.l4 * np.sin(self.theta1)) @ Rot("z", q5) @ Tra("z", self.l4 * np.cos(self.theta1)) 
         tf = np.dot( self.tf_A04(r_joints_array), tf_A45 )
         return tf
 
     def tf_A06(self, r_joints_array):
-
         q6 = r_joints_array[5]
-        tf_A56 = self.Rot("x", np.pi/2) @ self.Rot("z", q6)     
+        tf_A56 = Rot("x", np.pi/2) @ Rot("z", q6)     
         tf = np.dot( self.tf_A05(r_joints_array), tf_A56 )
         return tf
 
     def tf_A07(self, r_joints_array):
-
         q7 = r_joints_array[6]
-        tf_A67 = self.Rot("x", -np.pi/2) @ self.Tra("x", self.l5 * np.sin(self.theta2)) @ self.Rot("z", q7) @ self.Tra("z", self.l5 * np.cos(self.theta2))      
+        tf_A67 = Rot("x", -np.pi/2) @ Tra("x", self.l5 * np.sin(self.theta2)) @ Rot("z", q7) @ Tra("z", self.l5 * np.cos(self.theta2))      
         tf = np.dot( self.tf_A06(r_joints_array), tf_A67 )
         return tf
 
@@ -268,5 +207,4 @@ class xArm7_kinematics():
             z = 0
 
         return np.array([x, y, z])
-
 
