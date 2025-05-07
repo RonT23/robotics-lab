@@ -1,5 +1,15 @@
 import numpy as np
 
+def cross_product(a, b):
+    """
+    Compute the cross product from 2 given space vectors a and b
+    """
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+    ]
+
 # Foundamental transformation operations
 def Rot(axis, angle):
     """
@@ -75,11 +85,11 @@ def read_task_file(filename):
     P = []
     for line in ft_list:
         
-        if line.find("set_coords:") != -1:
+        if line.find("set_pose:") != -1:
             try:
                 coords_str = line.split(": ")[1]
-                x, y, z = map(float, coords_str.split(","))
-                P.append((x, y, z))
+                x, y, z, rx, ry, rz = map(float, coords_str.split(","))
+                P.append((x, y, z, rx, ry, rz))
             except (ValueError, IndexError) as e: 
                 print("WARNING: Invalid line : ", e)
                 continue 

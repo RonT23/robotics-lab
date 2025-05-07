@@ -7,7 +7,7 @@ Compute state space kinematic matrices for xArm7 robot arm (5 links, 7 joints)
 import numpy as np
 import math
 
-from utils import Rot, Tra
+from utils import Rot, Tra, cross_product
 
 # Checks if a matrix is a valid rotation matrix.
 def isRotationMatrix(R) :
@@ -88,60 +88,62 @@ class xArm7_kinematics():
 
     def compute_jacobian(self, r_joints_array):
 
-        J_11 = 0
-        J_12 = 0
-        J_13 = 0
-        J_14 = 0
-        J_15 = 0
-        J_16 = 0
-        J_17 = 0
+        # Homogeneous transformations
+        A01 = self.tf_A01(r_joints_array)
+        A02 = self.tf_A02(r_joints_array)
+        A03 = self.tf_A03(r_joints_array)
+        A04 = self.tf_A04(r_joints_array)
+        A05 = self.tf_A05(r_joints_array)
+        A06 = self.tf_A06(r_joints_array)
+        A07 = self.tf_A07(r_joints_array)
 
-        J_21 = 0
-        J_22 = 0
-        J_23 = 0
-        J_24 = 0
-        J_25 = 0
-        J_26 = 0
-        J_27 = 0
+        # Axes of rotation (z vectors in each frame)
+        b0 = np.array([0, 0, 1])
+        b1 = A01[:3, 2]
+        b2 = A02[:3, 2]
+        b3 = A03[:3, 2]
+        b4 = A04[:3, 2]
+        b5 = A05[:3, 2]
+        b6 = A06[:3, 2]
 
-        J_31 = 0
-        J_32 = 0
-        J_33 = 0
-        J_34 = 0
-        J_35 = 0
-        J_36 = 0
-        J_37 = 0
+        # Position vectors
+        P01 = A01[:3,3]
+        P02 = A02[:3,3]
+        P03 = A03[:3,3]
+        P04 = A04[:3,3]
+        P05 = A05[:3,3]
+        P06 = A06[:3,3]
+        P07 = A07[:3,3]
 
-        J_41 = 0
-        J_42 = 0
-        J_43 = 0
-        J_44 = 0
-        J_45 = 0
-        J_46 = 0
-        J_47 = 0
+        # Position differences
+        P17 = P07 - P01
+        P27 = P07 - P02
+        P37 = P07 - P03
+        P47 = P07 - P04
+        P57 = P07 - P05
+        P67 = P07 - P06
 
-        J_51 = 0
-        J_52 = 0
-        J_53 = 0
-        J_54 = 0
-        J_55 = 0
-        J_56 = 0
-        J_57 = 0
+        JL1 = cross_product(b0, P07)
+        JL2 = cross_product(b1, P17)
+        JL3 = cross_product(b2, P27)
+        JL4 = cross_product(b3, P37)
+        JL5 = cross_product(b4, P47)
+        JL6 = cross_product(b5, P57)
+        JL7 = cross_product(b6, P67)
+        
+        JA1 = b0
+        JA2 = b1
+        JA3 = b2
+        JA4 = b3
+        JA5 = b4
+        JA6 = b5
+        JA7 = b6
+        
+        JL = np.vstack([JL1, JL2, JL3, JL4, JL5, JL6, JL7]).T 
+        JA = np.vstack([JA1, JA2, JA3, JA4, JA5, JA6, JA7]).T 
 
-        J_61 = 0
-        J_62 = 0
-        J_63 = 0
-        J_64 = 0
-        J_65 = 0
-        J_66 = 0
-        J_67 = 0
+        J = np.matrix(np.vstack([JL, JA]))
 
-        J = np.matrix([ [ J_11 , J_12 , J_13 , J_14 , J_15 , J_16 , J_17 ],\
-                        [ J_21 , J_22 , J_23 , J_24 , J_25 , J_26 , J_27 ],\
-                        [ J_31 , J_32 , J_33 , J_34 , J_35 , J_36 , J_37 ],\
-                        [ J_41 , J_42 , J_43 , J_44 , J_45 , J_46 , J_47 ],\
-                        [ J_51 , J_52 , J_53 , J_54 , J_55 , J_56 , J_57 ],\
-                        [ J_61 , J_62 , J_63 , J_64 , J_65 , J_66 , J_67 ]])
         return J
 
     # Homogeneous transforms
@@ -207,4 +209,50 @@ class xArm7_kinematics():
             z = 0
 
         return np.array([x, y, z])
+
+if __name__ == "__main__":
+    kinematics = xArm7_kinematics()
+
+    # step 1: provide the target position and orientation
+    P = np.array([0.8, 0.1, 0.1508])
+    O = np.array([0.0, 0, 0.0])
+
+    # step 2: Find the current position and orientation
+    q = np.array([0, 0.0, 0, 0.0, 0, 0.0, 0])  # initial joint configuration
+    A07 = kinematics.tf_A07(q)
+    ee_pos = A07[0:3, 3]
+    ee_ori = kinematics.rotationMatrixToEulerAngles(A07[0:3, 0:3])
+
+    print("Current Position and Orientation:")
+    print(f"{ee_pos}\t\t{ee_ori}")
+
+    a = 1e-2
+    while True:
+        J = kinematics.compute_jacobian(q)
+        pinvJ = np.linalg.pinv(J)
+
+        # step 4: compute the error from target to current
+        p_err = (P - ee_pos)
+        o_err = (O - ee_ori)
+
+        err = np.concatenate([p_err, o_err])
+
+        # step 5: compute joint velocity
+        q_dot = pinvJ @ err
+        q_dot = np.asarray(q_dot).flatten()
+
+        # update the joints
+        q = q + q_dot * a
+
+        # step 6: forward kinematics on the computed q
+        A07 = kinematics.tf_A07(q)
+        ee_pos = A07[0:3, 3]
+        ee_ori = kinematics.rotationMatrixToEulerAngles(A07[0:3, 0:3])
+
+        if np.linalg.norm(err) <= 1e-2:
+            print("OK")
+            break
+
+        print(f"Computed Position: {ee_pos}")
+        print(f"Computed Orientation: {ee_ori}")
 

@@ -197,8 +197,17 @@ class xArm7_controller():
             self.print_current_ee_position(extra_msg="-After Initialization")
             
         # append the callculated positions to the current position
+        cur_pos = []
+        for p in self.kinematics.tf_A07(self.joint_states.position):
+            cur_pos.append(p)
+        
+        # add the dummy orientation
+        cur_pos.append(0.0)
+        cur_pos.append(0.0)
+        cur_pos.append(0.0)
+        
         P_task = []
-        P_task.append(self.kinematics.tf_A07(self.joint_states.position))
+        P_task.append(cur_pos)
         
         # read the user-specified waypoints file
         P_user = read_task_file(C_USER_TASK_FILE)
@@ -213,8 +222,8 @@ class xArm7_controller():
 
             for i in range(0, len(P_user)-1):        
                 # get a pair of points
-                P0 = P_user[i]
-                P1 = P_user[i+1]  
+                P0 = P_user[i][0:3]
+                P1 = P_user[i+1][0:3]  
 
                 # interpolate linearly
                 P = interpolate_points(P0, P1, self.rate)
