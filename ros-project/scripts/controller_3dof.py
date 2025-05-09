@@ -63,13 +63,13 @@ class xArm7_controller():
 
     # Main function that implements the control algorithm as reqested 
     # in part A of the project requirements
-    def position_control_algorithm(self, P=None, tolerance=1e-3):
+    def position_control_algorithm(self, P):
         """
         Implements a simple linear path following algorithm
         @param P: The set of waypoints the robot should pass
         @return : False if ROS server is off, True when the path is complete
         """
-        # compute the joint positions for the target path
+        # compute the joint positions for the target path through inverse kinematics
         Q = [self.kinematics.compute_angles(p) for p in P]
 
         # iterate over the joint positions
@@ -97,29 +97,6 @@ class xArm7_controller():
         
             # let it execute                    
             self.pub_rate.sleep()
-            
-            # control loop
-            while True:
-                
-                # feedback
-                q1, q2, _, q4    = self.joint_states.position[0:4]
-                qc1, qc2, _, qc4 = self.joint_angpos[0:4]
-
-                # compute the error from the target
-                q1_error = abs(qc1 - q1)
-                q2_error = abs(qc2 - q2)
-                q4_error = abs(qc4 - q4)
-                
-                error_max = max([q1_error, q2_error, q4_error])
-
-                if C_DEBUG_MODE:
-                    print(f"q1 Error : {q1_error} | q2 Error : {q2_error} | q3 Error : {q4_error}")
-                
-                # check the error threshold
-                if error_max > tolerance:
-                    self.pub_rate.sleep()
-                else:
-                    break
             
             if C_DEBUG_MODE:
                 self.print_current_ee_position(extra_msg="-After Command")
@@ -230,13 +207,8 @@ class xArm7_controller():
                 
                 print(f"\n TASK: {P0} ==> {P1} \n", end="")
 
-                # command the robot
-                self.position_control_algorithm(tolerance=0.0001, P=P)
-                
-            break
-        
-        print("\nINFO: Task Complete!")
-        print("INFO: Press Ctrl + C to terminate")
+                # command the robot to track the path
+                self.position_control_algorithm(P)
 
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")

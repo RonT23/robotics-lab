@@ -24,9 +24,10 @@ from kinematics import xArm7_kinematics
 # Additional utility functions created
 from utils import interpolate_points
 from utils import read_task_file
+#from utils import generate_trajectory_5th_roder
 
-from tf.transformations import quaternion_matrix, quaternion_from_euler, quaternion_multiply, quaternion_inverse
-matrix = quaternion_matrix([1, 0, 0, 0])
+# from tf.transformations import quaternion_matrix, quaternion_from_euler, quaternion_multiply, quaternion_inverse
+# matrix = quaternion_matrix([1, 0, 0, 0])
 
 C_USER_TASK_FILE = "task_file_2.txt"
 C_DEBUG_MODE = False
@@ -125,78 +126,86 @@ class xArm7_controller():
         wrapped_angle = (angle + np.pi) % (2 * np.pi) - np.pi
         return wrapped_angle
 
-    def full_control_algorithm(self, P=None, O=None, tolerance=1e-4, a=0.001):
+    def full_control_algorithm(self, P, O):
         
         # find the current joint configuration
         self.joint_angpos = self.joint_states.position
+        rostime_now = rospy.get_rostime()
+        time_now    = rostime_now.nsecs
+        dt          = 0.0
 
         # task loop
         for i in range(0, len(P)-1):
 
             if not C_DEBUG_MODE:
                 print(f"\r PROGRESS: {round(i / len(P) * 100.0, 2)}%", end="", flush=True)
-
-            # Task control Loop
-            while True:
-                
-                if rospy.is_shutdown():
-                    return False
-                
-                # Compute each transformation matrix wrt the base frame from joints' angular positions
-                self.A07 = self.kinematics.tf_A07(self.joint_angpos)
-                A07_real = self.kinematics.tf_A07(self.joint_states.position)
-
-                # get the current position and orientation of the end effector
-                ee_pos = A07_real[0:3,3]
-                ee_ori = self.kinematics.rotationMatrixToEulerAngles( A07_real[0:3,0:3] )
-                
-                # print(f"\n\nEE pos = \n{ee_pos}")
-                # print(f"EE ori = \n{ee_ori}")
-
-                # Compute the pseudo inverse jacobian matrix
-                J = self.kinematics.compute_jacobian(self.joint_angpos)
-                pinvJ = np.linalg.pinv(J)
-
-                # compute the error
-                p_err = P[i] - ee_pos
-                o_err = O[i] - ee_ori
-
-                err = np.concatenate([p_err, o_err])
-
-                # Compute the joints position
-                self.joint_angvel = pinvJ @ err
-                self.joint_angvel = np.asarray(self.joint_angvel).flatten()
-
-                self.joint_angpos += self.joint_angvel * a
-                self.joint_angpos = [self.wrap_angle(angle) for angle in self.joint_angpos]
-
-                print(err)
+    
+            if rospy.is_shutdown():
+                return False
             
-                if np.linalg.norm(err) <= tolerance:
-                    break
+            # Compute each transformation matrix wrt the base frame from joints' angular positions
+            self.A07 = self.kinematics.tf_A07(self.joint_angpos)
+            A07_real = self.kinematics.tf_A07(self.joint_states.position)
 
-                # print(f"\n\nJoint velocities: \n{self.joint_angvel}")
-                # print(f"\n\nJoint positions: \n {self.joint_angpos}")
-                # print(f"\n\nJoint poisiton calculated: \n{self.joint_angpos}")
-                # print(f"\n\nJacobian Matrix = \n{J}")
-                # print(f"\nPseudo inverse Jacobian Matrix  = \n{pinvJ}")
+            # get the current position and orientation of the end effector
+            ee_pos = A07_real[0:3,3]
+            ee_ori = self.kinematics.rotationMatrixToEulerAngles( A07_real[0:3,0:3] )
+            
+            # Compute the pseudo inverse jacobian matrix
+            J = self.kinematics.compute_jacobian(self.joint_angpos)
+            pinvJ = np.linalg.pinv(J)
 
-                if C_DEBUG_MODE:
-                    self.print_target_ee_position(P[i])
-                    self.print_current_ee_position(extra_msg="-Before Command")
-                    self.print_target_joint_position(self.joint_angpos)
-                    self.print_current_joint_position(extra_msg="-Before Command")
-                    self.print_target_fk_solution(self.joint_angpos)
+            # compute the error
+            p_err = P[i] - ee_pos
+            o_err = O[i] - ee_ori
+            
+            err = np.concatenate([p_err, o_err])
+            derr_dt = err / max(dt, 1e-6)  
 
-                # Publish the new joint's angular positions
-                for j in range(7):
-                    self.joint_pos_pub[j].publish(self.joint_angpos[j])
-                
-                # let it execute
-                self.pub_rate.sleep()
+            # from Wang et al. 2010
+            #Kp = np.diag([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+            Kp = np.diag([1, 1, 1, 1, 1, 1])
 
-                if C_DEBUG_MODE:
-                    self.print_current_ee_position(extra_msg="-After Command")
+            feedback = pinvJ @ derr_dt
+            #null_space_projection = (np.eye(7) - pinvJ @ J) @ self.joint_angvel 
+            self.joint_angvel = feedback #+ null_space_projection
+
+            time_prev = time_now
+            rostime_now = rospy.get_rostime()
+            time_now = rostime_now.nsecs
+            dt = (time_now - time_prev)/1e9
+
+            # Integration
+            self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel*dt)
+
+            
+            # flatten if needed
+            if self.joint_angpos.ndim > 1:
+                self.joint_angpos = np.asarray(self.joint_angpos).flatten()
+            #self.joint_angpos += self.joint_angvel * dt
+
+            # print(f"\n\nJoint velocities: \n{self.joint_angvel}")
+            # print(f"\n\nJoint positions: \n {self.joint_angpos}")
+            # print(f"\n\nJoint poisiton calculated: \n{self.joint_angpos}")
+            # print(f"\n\nJacobian Matrix = \n{J}")
+            # print(f"\nPseudo inverse Jacobian Matrix  = \n{pinvJ}")
+
+            if C_DEBUG_MODE:
+                self.print_target_ee_position(P[i])
+                self.print_current_ee_position(extra_msg="-Before Command")
+                self.print_target_joint_position(self.joint_angpos)
+                self.print_current_joint_position(extra_msg="-Before Command")
+                self.print_target_fk_solution(self.joint_angpos)
+
+            # Publish the new joint's angular positions
+            for j in range(7):
+                self.joint_pos_pub[j].publish(self.joint_angpos[j])
+            
+            # let it execute
+            self.pub_rate.sleep()
+
+            if C_DEBUG_MODE:
+                self.print_current_ee_position(extra_msg="-After Command")
 
         if not C_DEBUG_MODE:
             print("\r PROGRESS: Complete!", end="", flush=True)
@@ -237,12 +246,12 @@ class xArm7_controller():
 
                 P = interpolate_points(P0, P1, self.rate)
                 O = interpolate_points(O0, O1, self.rate)
-
+                
                 print(f"\b TASK: {P0}, {O0} ==> {P1}, {O1} \n", end="")
                 
-                self.full_control_algorithm(tolerance=1e-4, P=P, O=O)
+                self.full_control_algorithm(P, O)
 
-                #self.position_control_algorithm(tolerance=1e-4, P=P)
+                #self.position_control_algorithm(P)
                 # A07 = self.kinematics.tf_A07(self.joint_states.position)
                 # cur_pos = A07[0:3,3]
                 # cur_ori = self.kinematics.rotationMatrixToEulerAngles(A07[0:3,0:3])
