@@ -105,4 +105,60 @@ J = sp.Matrix.hstack(
     sp.Matrix.vstack(JL7, JA7)
 )
 
-sp.pprint(J, use_unicode=True)
+# Joint 1
+JL11 = J[0, 0]
+JL12 = J[1, 0]
+JL13 = J[2, 0]
+JA11 = J[3, 0]
+JA12 = J[4, 0]
+JA13 = J[5, 0]
+
+# Joint 2
+JL21 = J[0, 1]
+JL22 = J[1, 1]
+JL23 = J[2, 1]
+JA21 = J[3, 1]
+JA22 = J[4, 1]
+JA23 = J[5, 1]
+
+# Joint 3
+JL31 = J[0, 2]
+JL32 = J[1, 2]
+JL33 = J[2, 2]
+JA31 = J[3, 2]
+JA32 = J[4, 2]
+JA33 = J[5, 2]
+
+# Joint 4
+JL41 = J[0, 3]
+JL42 = J[1, 3]
+JL43 = J[2, 3]
+JA41 = J[3, 3]
+JA42 = J[4, 3]
+JA43 = J[5, 3]
+
+# Joint 5
+JL51 = J[0, 4]
+JL52 = J[1, 4]
+JL53 = J[2, 4]
+JA51 = J[3, 4]
+JA52 = J[4, 4]
+JA53 = J[5, 4]
+
+# Joint 6
+JL61 = J[0, 5]
+JL62 = J[1, 5]
+JL63 = J[2, 5]
+JA61 = J[3, 5]
+JA62 = J[4, 5]
+JA63 = J[5, 5]
+
+# Joint 7
+JL71 = J[0, 6]
+JL72 = J[1, 6]
+JL73 = J[2, 6]
+JA71 = J[3, 6]
+JA72 = J[4, 6]
+JA73 = J[5, 6]
+
+sp.pprint(JA13)

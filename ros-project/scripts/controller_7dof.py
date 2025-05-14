@@ -22,7 +22,8 @@ import time as t
 from kinematics import xArm7_kinematics
 
 # Additional utility functions created
-from utils import interpolate_points
+from utils import cubic_interpolation
+from utils import linear_interpolation
 from utils import read_task_file
 #from utils import generate_trajectory_5th_roder
 
@@ -31,6 +32,35 @@ from utils import read_task_file
 
 C_USER_TASK_FILE = "task_file_2.txt"
 C_DEBUG_MODE = False
+
+
+def euler_to_quaternion(roll, pitch, yaw):
+    """
+    Convert Euler angles (roll, pitch, yaw) to a quaternion (x, y, z, w).
+    
+    Args:
+        roll (float): Rotation around the x-axis in radians.
+        pitch (float): Rotation around the y-axis in radians.
+        yaw (float): Rotation around the z-axis in radians.
+    
+    Returns:
+        tuple: Quaternion (x, y, z, w).
+    """
+    # Half angles for optimization
+    cy = np.cos(yaw * 0.5)
+    sy = np.sin(yaw * 0.5)
+    cp = np.cos(pitch * 0.5)
+    sp = np.sin(pitch * 0.5)
+    cr = np.cos(roll * 0.5)
+    sr = np.sin(roll * 0.5)
+
+    # Quaternion calculations
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+
+    return np.array([x, y, z, w])
 
 class xArm7_controller():
     """
@@ -122,88 +152,110 @@ class xArm7_controller():
 
     ###
 
-    def wrap_angle(self, angle):
-        wrapped_angle = (angle + np.pi) % (2 * np.pi) - np.pi
-        return wrapped_angle
-
-    def full_control_algorithm(self, P, O):
+    def full_control(self, P, O, V, W):
         
-        # find the current joint configuration
         self.joint_angpos = self.joint_states.position
-        rostime_now = rospy.get_rostime()
-        time_now    = rostime_now.nsecs
-        dt          = 0.0
+         
+        X        = np.zeros(6)
+        Xdot     = np.zeros(6)
 
-        # task loop
-        for i in range(0, len(P)-1):
+        self.pos_data = []
 
-            if not C_DEBUG_MODE:
-                print(f"\r PROGRESS: {round(i / len(P) * 100.0, 2)}%", end="", flush=True)
-    
+        for i in range(0, len(P)):
             if rospy.is_shutdown():
                 return False
-            
-            # Compute each transformation matrix wrt the base frame from joints' angular positions
-            self.A07 = self.kinematics.tf_A07(self.joint_angpos)
-            A07_real = self.kinematics.tf_A07(self.joint_states.position)
 
-            # get the current position and orientation of the end effector
-            ee_pos = A07_real[0:3,3]
-            ee_ori = self.kinematics.rotationMatrixToEulerAngles( A07_real[0:3,0:3] )
+            #if not C_DEBUG_MODE:
+            #    print(f"\r PROGRESS: {round(i / len(P) * 100.0, 2)}%", end="", flush=True)
             
-            # Compute the pseudo inverse jacobian matrix
+            # Get current end effector pose
+            self.A07 = self.kinematics.tf_A07(self.joint_states.position)
+            ee_pos = self.A07[0:3, 3]
+            ee_ori = self.kinematics.rotationMatrixToEulerAngles(self.A07[0:3, 0:3])
+
+            # position and orientation error
+            X[:3] = P[i] - ee_pos
+            X[3:] = O[i] - ee_ori 
+
+            self.pos_data.append(ee_pos)
+
+            # desired velocity
+            Xdot[:3] = V[i]
+            Xdot[3:] = W[i]
+            
+            kp = 0.1 * np.eye(3)
+            # Compute Jacobian and its pseudo-inverse
             J = self.kinematics.compute_jacobian(self.joint_angpos)
-            pinvJ = np.linalg.pinv(J)
+            JL = J[:3, :]
+            JA = J[3:, :]
 
-            # compute the error
-            p_err = P[i] - ee_pos
-            o_err = O[i] - ee_ori
-            
-            err = np.concatenate([p_err, o_err])
-            derr_dt = err / max(dt, 1e-6)  
+            pinvJ  = np.linalg.pinv(J)
+            pinvJL = np.linalg.pinv(JL)
+            pinvJA = np.linalg.pinv(JA)
 
-            # from Wang et al. 2010
-            #Kp = np.diag([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
-            Kp = np.diag([1, 1, 1, 1, 1, 1])
-
-            feedback = pinvJ @ derr_dt
-            #null_space_projection = (np.eye(7) - pinvJ @ J) @ self.joint_angvel 
-            self.joint_angvel = feedback #+ null_space_projection
-
-            time_prev = time_now
+            time_prev =  self.time_now
             rostime_now = rospy.get_rostime()
-            time_now = rostime_now.nsecs
-            dt = (time_now - time_prev)/1e9
+            self.time_now = rostime_now.to_sec()
+            dt = self.time_now - time_prev
 
-            # Integration
-            self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel*dt)
+            self.joint_angvel  = pinvJL @ ( kp @ (X[:3] / max(dt, 1e-6)) )#Xdot[:3] + kp @ X[:3] ) # + np.dot((np.eye(7) - pinvJ @ J), 3 * np.ones([7, 1])) #[:3] ) + np.dot((np.eye(7) - pinvJL @ JL), 50 * np.ones([7, 1]))
 
+            self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel[0] * dt)
+            self.joint_angpos = np.asarray(self.joint_angpos).flatten()
+
+            for j in range(7):
+                self.joint_pos_pub[j].publish(self.joint_angpos[j])
+
+            self.pub_rate.sleep()
+
+        # Print progress completion if not in debug mode
+        if not C_DEBUG_MODE:
+            print("\r PROGRESS: Complete!", end="", flush=True)
+
+        return True
+
+    def position_control(self, P=None):
+        """
+        Implements a simple linear path following algorithm
+        @param P: The set of waypoints the robot should pass
+        @return : False if ROS server is off, True when the path is complete
+        """
+        # compute the joint positions for the target path through inverse kinematics
+        Q = [self.kinematics.compute_angles(p) for p in P]
+
+        self.pos_data = []
+        # iterate over the joint positions
+        for idx, joint_set in enumerate(Q):
             
-            # flatten if needed
-            if self.joint_angpos.ndim > 1:
-                self.joint_angpos = np.asarray(self.joint_angpos).flatten()
-            #self.joint_angpos += self.joint_angvel * dt
+            if not C_DEBUG_MODE:
+                print(f"\r PROGRESS: {round(idx / len(Q) * 100.0, 2)}%", end="", flush=True)
+            
+            self.joint_angpos  = joint_set
 
-            # print(f"\n\nJoint velocities: \n{self.joint_angvel}")
-            # print(f"\n\nJoint positions: \n {self.joint_angpos}")
-            # print(f"\n\nJoint poisiton calculated: \n{self.joint_angpos}")
-            # print(f"\n\nJacobian Matrix = \n{J}")
-            # print(f"\nPseudo inverse Jacobian Matrix  = \n{pinvJ}")
+            if rospy.is_shutdown():
+                return False
 
             if C_DEBUG_MODE:
-                self.print_target_ee_position(P[i])
+                self.print_target_ee_position(P[idx])
                 self.print_current_ee_position(extra_msg="-Before Command")
                 self.print_target_joint_position(self.joint_angpos)
                 self.print_current_joint_position(extra_msg="-Before Command")
                 self.print_target_fk_solution(self.joint_angpos)
 
-            # Publish the new joint's angular positions
-            for j in range(7):
-                self.joint_pos_pub[j].publish(self.joint_angpos[j])
-            
-            # let it execute
-            self.pub_rate.sleep()
+            # publish the new joint's angular positions
+            self.joint_pos_pub[0].publish(self.joint_angpos[0])
+            self.joint_pos_pub[1].publish(self.joint_angpos[1])
+            self.joint_pos_pub[3].publish(self.joint_angpos[3])
 
+            self.A07 = self.kinematics.tf_A07(self.joint_states.position)
+            ee_pos = self.A07[0:3, 3]
+            ee_ori = self.kinematics.rotationMatrixToEulerAngles(self.A07[0:3, 0:3]) 
+            
+            self.pos_data.append(ee_pos)
+
+            # let it execute                    
+            self.pub_rate.sleep()
+            
             if C_DEBUG_MODE:
                 self.print_current_ee_position(extra_msg="-After Command")
 
@@ -211,58 +263,66 @@ class xArm7_controller():
             print("\r PROGRESS: Complete!", end="", flush=True)
         
         return True
-
+    
     def publish(self):
         """
         Implements the task 2:
         Full position and orientation control.
         """
 
-        # set initial configuration
+        # Set initial configuration
         self.joint_angpos = [0, 0.75, 0, 1.5, 0, 0.75, 0]
-       
         tmp_rate = rospy.Rate(1)
         tmp_rate.sleep()
-        
+
         self.joint_pos_pub[3].publish(self.joint_angpos[3])
         tmp_rate.sleep()
-
         self.joint_pos_pub[1].publish(self.joint_angpos[1])
         self.joint_pos_pub[5].publish(self.joint_angpos[5])
         tmp_rate.sleep()
-        ##
 
+        # get the current pose
+        cur_pose = np.zeros(6)
+        cur_pose[:3] = self.kinematics.tf_A07(self.joint_states.position)[0:3,3]
+        cur_pose
+        # add the first waypoint as the current position of the robot
+        P_task = []
+        P_task.append(cur_pose)
+        
         # read the user-specified waypoints file
         P_user = read_task_file(C_USER_TASK_FILE)
+        P_task.extend(P_user)
+
+        rostime_now = rospy.get_rostime()
+        self.time_now = rostime_now.to_sec()
 
         if C_DEBUG_MODE:
             print(f"\nUser-defined waypoints:\n{P_user}")
 
         while not rospy.is_shutdown():
             for i in range(0, len(P_user)-1):
-
-                P0, O0 = P_user[i][0:3], P_user[i][3:6]
-                P1, O1 = P_user[i+1][0:3], P_user[i+1][3:6]
-
-                P = interpolate_points(P0, P1, self.rate)
-                O = interpolate_points(O0, O1, self.rate)
                 
-                print(f"\b TASK: {P0}, {O0} ==> {P1}, {O1} \n", end="")
+                P0, P1 = P_user[i][:3], P_user[i+1][:3]
+                O0, O1 = P_user[i][3:], P_user[i+1][3:] 
+
+                print(f"\n TASK: {P0}, {O0} ==> {P1}, {O1} \n", end="")
+
+                P, V = cubic_interpolation(P0, P1, 1, self.rate)
+                O, W = cubic_interpolation(O0, O1, 1, self.rate) 
+
+                # import matplotlib.pyplot as plt 
                 
-                self.full_control_algorithm(P, O)
+                self.full_control(P, O, V, W)
+                # full_control_pos_data = self.pos_data
 
-                #self.position_control_algorithm(P)
-                # A07 = self.kinematics.tf_A07(self.joint_states.position)
-                # cur_pos = A07[0:3,3]
-                # cur_ori = self.kinematics.rotationMatrixToEulerAngles(A07[0:3,0:3])
-                
-                # with open("pose_log.txt", "a") as log_file:
-                #     log_file.write(f"set_pose: {cur_pos[0]:.2f}, {cur_pos[1]:.2f}, {cur_pos[2]:.2f}, {cur_ori[0]:.2f}, {cur_ori[1]:.2f}, {cur_ori[2]:.2f}\n")
+                # self.position_control(P)
+                # position_control_pos_data = self.pos_data
 
-            break 
-
-        print("\nINFO: Task Complete")
-        print("INFO: Press Ctrl + C to terminate")
+                # plt.plot(full_control_pos_data)
+                # plt.plot(position_control_pos_data)
+                # plt.legend(["x2", "y2", "z2", "x1", "y1", "z1"])
+                # plt.grid(True)
+                # plt.show()
 
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")

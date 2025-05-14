@@ -85,8 +85,7 @@ class xArm7_kinematics():
         return joint_angles
 
     # DK
-    def compute_jacobian(self, r_joints_array):
-
+    def compute_jacobian(self, r_joints_array): 
         # homogeneous transformations
         A01 = self.tf_A01(r_joints_array)
         A02 = self.tf_A02(r_joints_array)
@@ -96,6 +95,7 @@ class xArm7_kinematics():
         A06 = self.tf_A06(r_joints_array)
         A07 = self.tf_A07(r_joints_array)
 
+       
         # axes of rotation - z vectors in each frame due to DH
         b0 = np.array([0, 0, 1])
         b1 = A01[:3, 2]
@@ -123,14 +123,69 @@ class xArm7_kinematics():
         JL6 = cross_product(b5, P57)
         JL7 = cross_product(b6, P67)
         
-        JL = np.vstack([JL1, JL2, JL3, JL4, JL5, JL6, JL7]).T 
-
         # angular elements
-        JA = np.vstack([b0, b1, b2, b3, b4, b5, b6]).T 
+        JA1 = b0 
+        JA2 = b1 
+        JA3 = b2 
+        JA4 = b3 
+        JA5 = b4 
+        JA6 = b5 
+        JA7 = b6
 
-        # Jacobian matrix
-        J = np.matrix(np.vstack([JL, JA]))
+        J_11 = JL1[0]
+        J_12 = JL2[0]
+        J_13 = JL3[0]
+        J_14 = JL4[0]
+        J_15 = JL5[0]
+        J_16 = JL6[0]
+        J_17 = JL7[0]
 
+        J_21 = JL1[1]
+        J_22 = JL2[1]
+        J_23 = JL3[1]
+        J_24 = JL4[1]
+        J_25 = JL5[1]
+        J_26 = JL6[1]
+        J_27 = JL7[1]
+
+        J_31 = JL1[2]
+        J_32 = JL2[2]
+        J_33 = JL3[2]
+        J_34 = JL4[2]
+        J_35 = JL5[2]
+        J_36 = JL6[2]
+        J_37 = JL7[2]
+
+        J_41 = JA1[0]
+        J_42 = JA2[0]
+        J_43 = JA3[0]
+        J_44 = JA4[0]
+        J_45 = JA5[0]
+        J_46 = JA6[0]
+        J_47 = JA7[0]
+
+        J_51 = JA1[1]
+        J_52 = JA2[1]
+        J_53 = JA3[1]
+        J_54 = JA4[1]
+        J_55 = JA5[1]
+        J_56 = JA6[1]
+        J_57 = JA7[1]
+
+        J_61 = JA1[2]
+        J_62 = JA2[2]
+        J_63 = JA3[2]
+        J_64 = JA4[2]
+        J_65 = JA5[2]
+        J_66 = JA6[2]
+        J_67 = JA7[2]
+
+        J = np.matrix([ [ J_11 , J_12 , J_13 , J_14 , J_15 , J_16 , J_17 ],\
+                        [ J_21 , J_22 , J_23 , J_24 , J_25 , J_26 , J_27 ],\
+                        [ J_31 , J_32 , J_33 , J_34 , J_35 , J_36 , J_37 ],\
+                        [ J_41 , J_42 , J_43 , J_44 , J_45 , J_46 , J_47 ],\
+                        [ J_51 , J_52 , J_53 , J_54 , J_55 , J_56 , J_57 ],\
+                        [ J_61 , J_62 , J_63 , J_64 , J_65 , J_66 , J_67 ]])
         return J
 
     # Homogeneous transforms
@@ -196,64 +251,3 @@ class xArm7_kinematics():
             z = 0
 
         return np.array([x, y, z])
-
-
-
-
-#### Test section : to be removed once I verify why the fuck the 
-####                differential kinematics doesn't work as I want it to...
-if __name__ == "__main__":
-    kinematics = xArm7_kinematics()
-
-    # step 1: provide the target position and orientation
-    P = np.array([0.6, 0.2, 0.1508])
-    O = np.array([3.1415, 0, 0.0])
-
-    # step 2: Find the current position and orientation
-    q = np.array([0, 0.0, 0, 0.0, 0, 0.0, 0])  # initial joint configuration
-    A07 = kinematics.tf_A07(q)
-    ee_pos = A07[0:3, 3]
-    ee_ori = kinematics.rotationMatrixToEulerAngles(A07[0:3, 0:3])
-
-    print("Current Position and Orientation:")
-    print(f"{ee_pos}\t\t{ee_ori}")
-
-    dt  = 1e-3
-    Kp = np.diag([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
-    dq_dt = np.array([0, 0, 0, 0, 0, 0, 0])
-
-    while True:
-        J = kinematics.compute_jacobian(q)
-        pinvJ = np.linalg.pinv(J)
-
-        # step 4: compute the error from target to current
-        p_err = (P - ee_pos)
-        o_err = (O - ee_ori)
-
-        err = np.concatenate([p_err, o_err])
-        derr_dt = err / dt
-        
-        # step 5: compute joint velocity
-        feedback                = pinvJ @ (derr_dt + Kp @ err)
-        null_space_projection   = (np.eye(7) - pinvJ @ J) @ dq_dt
-        dq_dt                   = feedback + null_space_projection
-
-        if dq_dt.ndim > 1:
-            dq_dt = np.asarray(dq_dt).flatten()
-    
-        # update the joints
-        q = q + dq_dt * dt
-
-        # step 6: forward kinematics on the computed q
-        A07     = kinematics.tf_A07(q)
-        ee_pos  = A07[0:3, 3]
-        ee_ori  = kinematics.rotationMatrixToEulerAngles(A07[0:3, 0:3])
-
-        if np.linalg.norm(err) < 1e-2:
-            print("OK")
-            break
-
-        print(f"Computed Position: {ee_pos}")
-        print(f"Computed Orientation: {ee_ori}")
-
-

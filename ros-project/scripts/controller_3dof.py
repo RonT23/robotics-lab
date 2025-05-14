@@ -19,7 +19,8 @@ import numpy as np
 from kinematics import xArm7_kinematics
 
 # Additional utility functions created
-from utils import interpolate_points
+from utils import cubic_interpolation
+from utils import linear_interpolation
 from utils import read_task_file
 
 C_USER_TASK_FILE = "task_file.txt"
@@ -63,7 +64,7 @@ class xArm7_controller():
 
     # Main function that implements the control algorithm as reqested 
     # in part A of the project requirements
-    def position_control_algorithm(self, P):
+    def position_control(self, P=None):
         """
         Implements a simple linear path following algorithm
         @param P: The set of waypoints the robot should pass
@@ -143,6 +144,15 @@ class xArm7_controller():
         for i, p in enumerate(ee_position):
             value = np.asscalar(p) if hasattr(np, 'asscalar') else p.item()
             print(f"Pe{label[i]} : {value:.4f}")
+    
+    def print_current_ee_orientation(self, extra_msg=None):
+        print(f"\nCurrent EE Orientation {extra_msg}")
+        A07 = self.kinematics.tf_A07(self.joint_states.position)
+        ori = self.kinematics.rotationMatrixToEulerAngles( A07[0:3,0:3] )
+        labels= ['x', 'y', 'z']
+        for i, r in enumerate(ori):
+            print(f" {labels[i]}: {r}")
+
     ###
      
     def publish(self):
@@ -172,24 +182,17 @@ class xArm7_controller():
         if C_DEBUG_MODE:
             self.print_current_joint_position(extra_msg="-After Initialization")
             self.print_current_ee_position(extra_msg="-After Initialization")
-            
-        # append the callculated positions to the current position
-        cur_pos = []
-        for p in self.kinematics.tf_A07(self.joint_states.position):
-            cur_pos.append(p)
         
-        # add the dummy orientation
-        cur_pos.append(0.0)
-        cur_pos.append(0.0)
-        cur_pos.append(0.0)
+        # get the current pose
+        cur_pose = np.zeros(6)
+        cur_pose[:3] = self.kinematics.tf_A07(self.joint_states.position)[0:3,3]
         
+        # add the first waypoint as the current position of the robot
         P_task = []
-        P_task.append(cur_pos)
+        P_task.append(cur_pose)
         
         # read the user-specified waypoints file
         P_user = read_task_file(C_USER_TASK_FILE)
-
-        # append the user-specified waypoints in the current position
         P_task.extend(P_user)
 
         if C_DEBUG_MODE:
@@ -199,16 +202,17 @@ class xArm7_controller():
 
             for i in range(0, len(P_user)-1):        
                 # get a pair of points
-                P0 = P_user[i][0:3]
-                P1 = P_user[i+1][0:3]  
-
-                # interpolate linearly
-                P = interpolate_points(P0, P1, self.rate)
-                
+                P0, P1 = P_user[i][0:3], P_user[i+1][0:3] 
                 print(f"\n TASK: {P0} ==> {P1} \n", end="")
+                
+                # interpolate linearly and control the robot
+                #P = linear_interpolation(P0, P1, self.rate)
+                P, _ = cubic_interpolation(P0, P1, 0.5, self.rate)
+                self.position_control(P=P)
 
-                # command the robot to track the path
-                self.position_control_algorithm(P)
+                # print("\n\n")
+                # self.print_current_ee_position()
+                # self.print_current_ee_orientation()
 
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")
