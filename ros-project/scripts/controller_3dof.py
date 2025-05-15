@@ -206,13 +206,10 @@ class xArm7_controller():
                 print(f"\n TASK: {P0} ==> {P1} \n", end="")
                 
                 # interpolate linearly and control the robot
-                #P = linear_interpolation(P0, P1, self.rate)
-                P, _ = cubic_interpolation(P0, P1, 0.5, self.rate)
+                P = linear_interpolation(P0, P1, self.rate)
+                #P, _ = cubic_interpolation(P0, P1, 0.5, self.rate)
+                
                 self.position_control(P=P)
-
-                # print("\n\n")
-                # self.print_current_ee_position()
-                # self.print_current_ee_orientation()
 
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")

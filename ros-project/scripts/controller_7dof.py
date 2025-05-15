@@ -151,56 +151,56 @@ class xArm7_controller():
             print(f" {labels[i]}: {r}")
 
     ###
-
-    def full_control(self, P, O, V, W):
+    def full_control_with_linear_interpolation(self, P, O):
         
         self.joint_angpos = self.joint_states.position
-         
-        X        = np.zeros(6)
-        Xdot     = np.zeros(6)
-
-        self.pos_data = []
+        X = np.zeros(6)
+        kp = 2 * np.eye(6)
+        kd = 0.1 * np.eye(6)
+        dt = 0.0
 
         for i in range(0, len(P)):
             if rospy.is_shutdown():
                 return False
 
-            #if not C_DEBUG_MODE:
-            #    print(f"\r PROGRESS: {round(i / len(P) * 100.0, 2)}%", end="", flush=True)
+            if not C_DEBUG_MODE:
+               print(f"\r PROGRESS: {round(i / len(P) * 100.0, 2)}%", end="", flush=True)
             
             # Get current end effector pose
-            self.A07 = self.kinematics.tf_A07(self.joint_states.position)
-            ee_pos = self.A07[0:3, 3]
-            ee_ori = self.kinematics.rotationMatrixToEulerAngles(self.A07[0:3, 0:3])
+            current_pose = self.kinematics.pose_from_tf(self.kinematics.tf_A07(self.joint_states.position))
 
-            # position and orientation error
-            X[:3] = P[i] - ee_pos
-            X[3:] = O[i] - ee_ori 
-
-            self.pos_data.append(ee_pos)
-
-            # desired velocity
-            Xdot[:3] = V[i]
-            Xdot[3:] = W[i]
-            
-            kp = 0.1 * np.eye(3)
-            # Compute Jacobian and its pseudo-inverse
-            J = self.kinematics.compute_jacobian(self.joint_angpos)
-            JL = J[:3, :]
-            JA = J[3:, :]
-
+            J = self.kinematics.compute_jacobian(self.joint_states.position)
+            J = self.kinematics.numerical_jacobian(self.joint_states.position)
             pinvJ  = np.linalg.pinv(J)
-            pinvJL = np.linalg.pinv(JL)
-            pinvJA = np.linalg.pinv(JA)
+      
+            # position and orientation error
+            X[:3] = P[i] - current_pose[:3]
+            X[3:] = O[i] - current_pose[3:]
+
+            # compute the angular velocities
+            if dt < 1e-6:
+                Xdot = np.zeros(6)
+            else:
+                Xdot =  np.array([x/dt for x in X])
+
+            alpha = 0.1
+            k1 = np.array([1, 1, 1, 1, 1, 1, 1]).T
+
+            # print("\n\nDimensions")
+            # print(f"pinvJ: {pinvJ.shape}")
+            # print(f"J: {J.shape}")
+            # print(f"x:{X.shape}")
+            # print(f"Xdot: {Xdot.shape}")
+            # print(f"k1 : {k1.shape} ")
+            
+            self.joint_angvel  = pinvJ (X) #@ (kd @ Xdot + kp @ X) + (np.eye(7) - pinvJ @ J) @ k1 #kp @ X ) 
 
             time_prev =  self.time_now
             rostime_now = rospy.get_rostime()
             self.time_now = rostime_now.to_sec()
             dt = self.time_now - time_prev
-
-            self.joint_angvel  = pinvJL @ ( kp @ (X[:3] / max(dt, 1e-6)) )#Xdot[:3] + kp @ X[:3] ) # + np.dot((np.eye(7) - pinvJ @ J), 3 * np.ones([7, 1])) #[:3] ) + np.dot((np.eye(7) - pinvJL @ JL), 50 * np.ones([7, 1]))
-
-            self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel[0] * dt)
+            
+            self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel * dt)
             self.joint_angpos = np.asarray(self.joint_angpos).flatten()
 
             for j in range(7):
@@ -213,55 +213,64 @@ class xArm7_controller():
             print("\r PROGRESS: Complete!", end="", flush=True)
 
         return True
+    
+    def full_control(self, n):
+        
+        self.joint_angpos = self.joint_states.position
+        target_pose = np.zeros(6)
+        target_velocity = np.zeros(6)
+        kp = 0.2 * np.eye(6)
+        time = 0
+        
+        X = np.zeros(6)
+        Xdot = np.zeros(6)
 
-    def position_control(self, P=None):
-        """
-        Implements a simple linear path following algorithm
-        @param P: The set of waypoints the robot should pass
-        @return : False if ROS server is off, True when the path is complete
-        """
-        # compute the joint positions for the target path through inverse kinematics
-        Q = [self.kinematics.compute_angles(p) for p in P]
-
-        self.pos_data = []
-        # iterate over the joint positions
-        for idx, joint_set in enumerate(Q):
-            
-            if not C_DEBUG_MODE:
-                print(f"\r PROGRESS: {round(idx / len(Q) * 100.0, 2)}%", end="", flush=True)
-            
-            self.joint_angpos  = joint_set
-
+        for i in range(0, n):
             if rospy.is_shutdown():
                 return False
 
-            if C_DEBUG_MODE:
-                self.print_target_ee_position(P[idx])
-                self.print_current_ee_position(extra_msg="-Before Command")
-                self.print_target_joint_position(self.joint_angpos)
-                self.print_current_joint_position(extra_msg="-Before Command")
-                self.print_target_fk_solution(self.joint_angpos)
-
-            # publish the new joint's angular positions
-            self.joint_pos_pub[0].publish(self.joint_angpos[0])
-            self.joint_pos_pub[1].publish(self.joint_angpos[1])
-            self.joint_pos_pub[3].publish(self.joint_angpos[3])
-
-            self.A07 = self.kinematics.tf_A07(self.joint_states.position)
-            ee_pos = self.A07[0:3, 3]
-            ee_ori = self.kinematics.rotationMatrixToEulerAngles(self.A07[0:3, 0:3]) 
+            if not C_DEBUG_MODE:
+               print(f"\r PROGRESS: {round(i / n * 100.0, 2)}%", end="", flush=True)
             
-            self.pos_data.append(ee_pos)
+            # Get current end effector pose
+            current_pose = self.kinematics.pose_from_tf(self.kinematics.tf_A07(self.joint_states.position))
+            
+            #J = self.kinematics.compute_jacobian(self.joint_states.position)
+            J = self.kinematics.numerical_jacobian(self.joint_states.position)
+            pinvJ  = np.linalg.pinv(J)
+            
+            # get the desired position and velocity
+            for j in range(0, 3):
+                target_pose[j]        = self.a0_pos[j] + self.a1_pos[j] * time + self.a2_pos[j] * time**2  + self.a3_pos[j] * time**3
+                target_pose[j+3]      = self.a0_ori[j] + self.a1_ori[j] * time + self.a2_ori[j] * time**2  + self.a3_ori[j] * time**3
+                target_velocity[j]    =                  self.a1_pos[j] * time + self.a2_pos[j] * 2 * time + self.a3_pos[j] * 3 * time**2
+                target_velocity[j+3]  =                  self.a1_ori[j] * time + self.a2_ori[j] * 2 * time + self.a3_ori[j] * 3 * time**2
+            
+            X = target_pose - current_pose
+            
+            # compute the angular velocities
+            self.joint_angvel  = pinvJ @ ( target_velocity + kp @ X ) + (np.eye(7) - pinvJ @ J) @ np.array([1, 1, 1, 1, 1, 1, 1])
 
-            # let it execute                    
+            time_prev =  self.time_now
+            rostime_now = rospy.get_rostime()
+            self.time_now = rostime_now.to_sec()
+            dt = self.time_now - time_prev
+            
+            # update the time counter for the target position computation
+            time = time + dt 
+
+            self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel * dt)
+            self.joint_angpos = np.asarray(self.joint_angpos).flatten()
+
+            for j in range(7):
+                self.joint_pos_pub[j].publish(self.joint_angpos[j])
+
             self.pub_rate.sleep()
-            
-            if C_DEBUG_MODE:
-                self.print_current_ee_position(extra_msg="-After Command")
 
+        # Print progress completion if not in debug mode
         if not C_DEBUG_MODE:
             print("\r PROGRESS: Complete!", end="", flush=True)
-        
+
         return True
     
     def publish(self):
@@ -285,6 +294,7 @@ class xArm7_controller():
         cur_pose = np.zeros(6)
         cur_pose[:3] = self.kinematics.tf_A07(self.joint_states.position)[0:3,3]
         cur_pose
+
         # add the first waypoint as the current position of the robot
         P_task = []
         P_task.append(cur_pose)
@@ -306,23 +316,18 @@ class xArm7_controller():
                 O0, O1 = P_user[i][3:], P_user[i+1][3:] 
 
                 print(f"\n TASK: {P0}, {O0} ==> {P1}, {O1} \n", end="")
-
-                P, V = cubic_interpolation(P0, P1, 1, self.rate)
-                O, W = cubic_interpolation(O0, O1, 1, self.rate) 
-
-                # import matplotlib.pyplot as plt 
                 
-                self.full_control(P, O, V, W)
-                # full_control_pos_data = self.pos_data
+                n = 100
+                self.a0_pos, self.a1_pos, self.a2_pos, self.a3_pos = cubic_interpolation(P0, P1, n, 1/self.rate)
+                self.a0_ori, self.a1_ori, self.a2_ori, self.a3_ori = cubic_interpolation(O0, O1, n, 1/self.rate)  
+                self.full_control(n)
 
-                # self.position_control(P)
-                # position_control_pos_data = self.pos_data
+                # P = linear_interpolation(P0, P1, self.rate)
+                # O = linear_interpolation(O0, O1, self.rate)
+                # self.full_control_with_linear_interpolation(P, O)
 
-                # plt.plot(full_control_pos_data)
-                # plt.plot(position_control_pos_data)
-                # plt.legend(["x2", "y2", "z2", "x1", "y1", "z1"])
-                # plt.grid(True)
-                # plt.show()
+                self.print_current_ee_orientation("- After the task")
+                self.print_current_ee_position("- After the task")
 
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")

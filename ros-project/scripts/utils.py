@@ -47,15 +47,16 @@ def Tra(axis, displacement):
         print("[ERROR] Tra : Invalid axis. Returning identity.")
     return T
 
-def cubic_interpolation(P0, P1, T, n=10):
+def cubic_interpolation(P0, P1, dt, n):
     """
     This function is used to interpolate two points in space using cubic interpolation 
     @param P0 : the initial position in (X, Y, Z)
     @param P1 : the final position in (X, Y, Z)
-    @param T  : the time for traversing the segment 
+    @param dt : sampling time 
     @param n  : the number of interpolated values to produce
-    @return   : returns the set of interpolated positions and velocities
+    @return   : returns the set of interpolation coeficients
     """
+    T = n * dt
     A = np.array([
         [1, 0,   0,     0],
         [1, T, T**2, T**3],
@@ -66,29 +67,21 @@ def cubic_interpolation(P0, P1, T, n=10):
     P0 = np.array(P0).reshape(3, 1)
     P1 = np.array(P1).reshape(3, 1)
     
-    position_points = []
-    velocity_points = []
+    a0 = []
+    a1 = []
+    a2 = []
+    a3 = []
 
     for dim in range(3):
         B = np.array([P0[dim, 0], P1[dim, 0], 0, 0])
-        
         a = np.linalg.solve(A, B)
 
-        pos_dim = []
-        vel_dim = []
-        for t in np.linspace(0, T, n+2):
-            pos = a[0] + a[1] * t + a[2] * t**2 + a[3] * t**3
-            vel = a[1] + 2 * a[2] * t + 3 * a[3] * t**2
-            pos_dim.append(pos)
-            vel_dim.append(vel)
-        
-        position_points.append(pos_dim)
-        velocity_points.append(vel_dim)
+        a0.append(a[0])
+        a1.append(a[1])
+        a2.append(a[2])
+        a3.append(a[3])
 
-    position_points = np.array(position_points).T
-    velocity_points = np.array(velocity_points).T
-
-    return position_points, velocity_points
+    return a0, a1, a2, a3
 
 def linear_interpolation(P0, P1, n):
     """
