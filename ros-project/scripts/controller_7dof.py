@@ -33,35 +33,6 @@ from utils import read_task_file
 C_USER_TASK_FILE = "task_file_2.txt"
 C_DEBUG_MODE = False
 
-
-def euler_to_quaternion(roll, pitch, yaw):
-    """
-    Convert Euler angles (roll, pitch, yaw) to a quaternion (x, y, z, w).
-    
-    Args:
-        roll (float): Rotation around the x-axis in radians.
-        pitch (float): Rotation around the y-axis in radians.
-        yaw (float): Rotation around the z-axis in radians.
-    
-    Returns:
-        tuple: Quaternion (x, y, z, w).
-    """
-    # Half angles for optimization
-    cy = np.cos(yaw * 0.5)
-    sy = np.sin(yaw * 0.5)
-    cp = np.cos(pitch * 0.5)
-    sp = np.sin(pitch * 0.5)
-    cr = np.cos(roll * 0.5)
-    sr = np.sin(roll * 0.5)
-
-    # Quaternion calculations
-    w = cr * cp * cy + sr * sp * sy
-    x = sr * cp * cy - cr * sp * sy
-    y = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * sp * cy
-
-    return np.array([x, y, z, w])
-
 class xArm7_controller():
     """
     Class to compute and publish joints positions
@@ -235,8 +206,8 @@ class xArm7_controller():
             # Get current end effector pose
             current_pose = self.kinematics.pose_from_tf(self.kinematics.tf_A07(self.joint_states.position))
             
-            #J = self.kinematics.compute_jacobian(self.joint_states.position)
-            J = self.kinematics.numerical_jacobian(self.joint_states.position)
+            J = self.kinematics.compute_jacobian(self.joint_states.position)
+            #J = self.kinematics.numerical_jacobian(self.joint_states.position)
             pinvJ  = np.linalg.pinv(J)
             
             # get the desired position and velocity
@@ -249,7 +220,7 @@ class xArm7_controller():
             X = target_pose - current_pose
             
             # compute the angular velocities
-            self.joint_angvel  = pinvJ @ ( target_velocity + kp @ X ) + (np.eye(7) - pinvJ @ J) @ np.array([1, 1, 1, 1, 1, 1, 1])
+            self.joint_angvel  = pinvJ @ ( X ) + (np.eye(7) - pinvJ @ J) @ np.array([1, 1, 1, 1, 1, 1, 1])
 
             time_prev =  self.time_now
             rostime_now = rospy.get_rostime()
@@ -316,7 +287,7 @@ class xArm7_controller():
                 O0, O1 = P_user[i][3:], P_user[i+1][3:] 
 
                 print(f"\n TASK: {P0}, {O0} ==> {P1}, {O1} \n", end="")
-                
+            
                 n = 100
                 self.a0_pos, self.a1_pos, self.a2_pos, self.a3_pos = cubic_interpolation(P0, P1, n, 1/self.rate)
                 self.a0_ori, self.a1_ori, self.a2_ori, self.a3_ori = cubic_interpolation(O0, O1, n, 1/self.rate)  

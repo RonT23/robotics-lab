@@ -25,6 +25,8 @@ from utils import read_task_file
 
 C_USER_TASK_FILE = "task_file.txt"
 C_DEBUG_MODE     = False             
+C_EVALUATION     = True 
+C_EVALUATION_CYCLES = 10
 
 class xArm7_controller():
     """
@@ -99,6 +101,19 @@ class xArm7_controller():
             # let it execute                    
             self.pub_rate.sleep()
             
+            # record data for evaluation
+            self.x_robot.append(self.kinematics.tf_A07(self.joint_states.position)[0, 3])
+            self.y_robot.append(self.kinematics.tf_A07(self.joint_states.position)[1, 3])
+            self.z_robot.append(self.kinematics.tf_A07(self.joint_states.position)[2, 3])
+
+            self.q1_commanded.append(self.joint_angpos[0])
+            self.q2_commanded.append(self.joint_angpos[1])
+            self.q4_commanded.append(self.joint_angpos[3])
+
+            self.q1_actual.append(self.joint_states.position[0])
+            self.q2_actual.append(self.joint_states.position[1])
+            self.q4_actual.append(self.joint_states.position[3])
+                        
             if C_DEBUG_MODE:
                 self.print_current_ee_position(extra_msg="-After Command")
 
@@ -198,6 +213,13 @@ class xArm7_controller():
         if C_DEBUG_MODE:
             print(f"\nUser-defined waypoints:\n{P_user}")
 
+        # used for debugging
+        x_inter, y_inter, z_inter = [], [], []
+        self.x_robot, self.y_robot, self.z_robot = [], [], []
+        self.q1_actual, self.q2_actual, self.q4_actual = [], [], []
+        self.q1_commanded, self.q2_commanded, self.q4_commanded = [], [], []
+        iteration = 0
+
         while not rospy.is_shutdown():
 
             for i in range(0, len(P_user)-1):        
@@ -207,9 +229,66 @@ class xArm7_controller():
                 
                 # interpolate linearly and control the robot
                 P = linear_interpolation(P0, P1, self.rate)
+
+                # record the interpolated data
+                x_inter.extend(P[:, 0])
+                y_inter.extend(P[:, 1])
+                z_inter.extend(P[:, 2])
+  
                 #P, _ = cubic_interpolation(P0, P1, 0.5, self.rate)
                 
                 self.position_control(P=P)
+
+            if C_EVALUATION: 
+                iteration += 1
+                if iteration == C_EVALUATION_CYCLES:
+                    break 
+
+        import matplotlib.pyplot as plt
+        # plot the actual VS desired position
+        plt.figure(figsize=(12, 8))  
+        plt.plot(x_inter, linewidth=2, label='X Position (Desired)') 
+        plt.plot(y_inter, linewidth=2, label='Y Position (Desired)')
+        plt.plot(z_inter, linewidth=2, label='Z Position (Desired)')
+        plt.plot(self.x_robot, linewidth=2, label='X Position (Executed)') 
+        plt.plot(self.y_robot, linewidth=2, label='Y Position (Executed)')
+        plt.plot(self.z_robot, linewidth=2, label='Z Position (Executed)')
+        plt.xlabel('Time (seconds)', fontsize=14) 
+        plt.ylabel('End Effector Position (m)', fontsize=14)
+        plt.grid(True)
+        plt.legend(fontsize=12)
+        plt.tick_params(axis='both', which='major', labelsize=12)
+        plt.tight_layout()  
+        plt.show()
+
+        # plot the total position error 
+        plt.figure(figsize=(12, 8))  
+        plt.plot(np.array(x_inter) - np.array(self.x_robot), linewidth=2, label='X Position Error') 
+        plt.plot(np.array(y_inter) - np.array(self.y_robot), linewidth=2, label='Y Position Error')
+        plt.plot(np.array(z_inter) - np.array(self.z_robot), linewidth=2, label='Z Position Error')
+        plt.xlabel('Time (seconds)', fontsize=14) 
+        plt.ylabel('End Effector Position Error (m)', fontsize=14)
+        plt.grid(True)
+        plt.legend(fontsize=12)
+        plt.tick_params(axis='both', which='major', labelsize=12)
+        plt.tight_layout()  
+        plt.show()
+
+        # Joint configuration actual VS commanded
+        plt.figure(figsize=(12, 8))  
+        plt.plot(self.q1_commanded, linewidth=2, label='q1 Displacement (Desired)') 
+        plt.plot(self.q2_commanded, linewidth=2, label='q2 Displacement (Desired)')
+        plt.plot(self.q4_commanded, linewidth=2, label='q4 Displacement (Desired)')
+        plt.plot(self.q1_actual, linewidth=2, label='q1 Displacement (Actual)') 
+        plt.plot(self.q2_actual, linewidth=2, label='q2 Displacement (Actual)')
+        plt.plot(self.q4_actual, linewidth=2, label='q4 Displacement (Actual)')
+        plt.xlabel('Time (seconds)', fontsize=14) 
+        plt.ylabel('Joint displacement (rad)', fontsize=14)
+        plt.grid(True)
+        plt.legend(fontsize=12)
+        plt.tick_params(axis='both', which='major', labelsize=12)
+        plt.tight_layout()  
+        plt.show()
 
     def turn_off(self):
         rospy.loginfo("Shutting down ROS")

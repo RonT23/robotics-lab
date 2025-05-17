@@ -252,17 +252,23 @@ class xArm7_kinematics():
 
         return np.array([x, y, z])
     
+
+
+
     def pose_from_tf(self, tf):
         """
         Extracts position and orientation in Euler angles from a transformation matrix 
         """
-        position = tf[:3, 3]  
+        position    = tf[:3, 3]  
         orientation = self.rotationMatrixToEulerAngles(tf[:3, :3])
         return np.concatenate((position, orientation))
 
+
+
+
     def numerical_jacobian(self, q, delta=1e-6):
         J_num = np.zeros((6, 7))
-        f_q = self.pose_from_tf(self.tf_A07(q)) 
+        f_q   = self.pose_from_tf(self.tf_A07(q)) 
         for i in range(7):
             dq = np.zeros(7)
             dq[i] = delta
@@ -270,6 +276,9 @@ class xArm7_kinematics():
             J_num[:, i] = (f_q_perturbed - f_q) / delta
         return J_num
     
+
+
+
 
     def partial_tf_A01(self):
         # Joint 1: alpha=0, a=0
@@ -313,7 +322,6 @@ class xArm7_kinematics():
     
     def joint_axis(self, joint_index):
         T_partial = self.partial_transform_to(joint_index)
-        # The z-axis is the 3rd column of the rotation matrix part (top-left 3x3)
         z = T_partial[0:3, 2]
         return z / np.linalg.norm(z)
     
