@@ -86,15 +86,23 @@ class xArm7_kinematics():
 
     # DK
     def compute_jacobian(self, r_joints_array): 
+        q1, q2, q3, q4, q5, q6, q7 = r_joints_array
         # homogeneous transformations
-        A01 = self.tf_A01(r_joints_array)
-        A02 = self.tf_A02(r_joints_array)
-        A03 = self.tf_A03(r_joints_array)
-        A04 = self.tf_A04(r_joints_array)
-        A05 = self.tf_A05(r_joints_array)
-        A06 = self.tf_A06(r_joints_array)
-        A07 = self.tf_A07(r_joints_array)
+        A01 = Rot("z", q1) @ Tra("z", self.l1) @ Rot("x", -np.pi/2) #self.tf_A01(r_joints_array)
+        A12 = Rot("z", q2) @ Rot("x", np.pi/2) #self.tf_A02(r_joints_array)
+        A23 = Rot("z", q3) @ Tra("z", self.l2) @ Rot("x", np.pi/2) @ Tra("x", self.l3) #self.tf_A03(r_joints_array)
+        A34 = Rot("z", q4) @ Rot("x", np.pi/2) @ Tra("x", self.l4 * np.sin(self.theta1)) #self.tf_A04(r_joints_array)
+        A45 = Rot("z", q5) @ Tra("z", self.l4 * np.cos(self.theta1)) @ Rot("x", np.pi/2)#self.tf_A05(r_joints_array)
+        A56 = Rot("z", q6) @ Rot("x", -np.pi/2) @ Tra("x", self.l5 * np.sin(self.theta2))#self.tf_A06(r_joints_array)
+        A67 = Rot("z", q7)  #self.tf_A07(r_joints_array)
 
+        A02 = A01 @ A12
+        A03 = A02 @ A23 
+        A04 = A03 @ A34 
+        A05 = A04 @ A45
+        A06 = A05 @ A56
+        A07 = A06 @ A67 @ Tra("z", self.l5 * np.cos(self.theta2))
+        
         # axes of rotation - z vectors in each frame due to DH
         b0 = np.array([0, 0, 1])
         b1 = A01[:3, 2]
@@ -186,7 +194,7 @@ class xArm7_kinematics():
                         [ J_51 , J_52 , J_53 , J_54 , J_55 , J_56 , J_57 ],\
                         [ J_61 , J_62 , J_63 , J_64 , J_65 , J_66 , J_67 ]])
         
-        return self.jacobian(r_joints_array)
+        return J
 
     # Homogeneous transforms
     def tf_A01(self, r_joints_array):
@@ -252,9 +260,6 @@ class xArm7_kinematics():
 
         return np.array([x, y, z])
     
-
-
-
     def pose_from_tf(self, tf):
         """
         Extracts position and orientation in Euler angles from a transformation matrix 
@@ -262,6 +267,27 @@ class xArm7_kinematics():
         position    = tf[:3, 3]  
         orientation = self.rotationMatrixToEulerAngles(tf[:3, :3])
         return np.concatenate((position, orientation))
+
+    def eulerAnglesToAngularVelocities(self, euler_angles, deuler_angles_dt):
+        """
+        Compute the angular velocities from the provided euler angles and euler angles 
+        time derivative
+        """
+        x, y, z = euler_angles
+        dx, dy, dz = deuler_angles_dt
+        
+        wx = dx - dz * np.sin(y) 
+        wy = dy * np.cos(x) + dz * np.sin(x) * np.cos(y)
+        wz = -dy * np.sin(x) + dx * np.cos(x) * np.cos(y)
+
+        return np.array([wx, wy, wz])
+
+
+
+
+
+
+
 
 
 

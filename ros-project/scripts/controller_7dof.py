@@ -207,6 +207,7 @@ class xArm7_controller():
             current_pose = self.kinematics.pose_from_tf(self.kinematics.tf_A07(self.joint_states.position))
             
             J = self.kinematics.compute_jacobian(self.joint_states.position)
+            #J = self.kinematics.jacobian(self.joint_states.position)
             #J = self.kinematics.numerical_jacobian(self.joint_states.position)
             pinvJ  = np.linalg.pinv(J)
             
@@ -218,9 +219,11 @@ class xArm7_controller():
                 target_velocity[j+3]  =                  self.a1_ori[j] * time + self.a2_ori[j] * 2 * time + self.a3_ori[j] * 3 * time**2
             
             X = target_pose - current_pose
+            Xdot[:3] = target_velocity[:3]
+            Xdot[3:] = self.kinematics.eulerAnglesToAngularVelocities(target_pose[3:], target_velocity[3:])
             
             # compute the angular velocities
-            self.joint_angvel  = pinvJ @ ( X ) + (np.eye(7) - pinvJ @ J) @ np.array([1, 1, 1, 1, 1, 1, 1])
+            self.joint_angvel  = pinvJ @ ( Xdot + X ) + (np.eye(7) - pinvJ @ J) @ np.array([1, 1, 1, 1, 1, 1, 1])
 
             time_prev =  self.time_now
             rostime_now = rospy.get_rostime()
@@ -287,11 +290,11 @@ class xArm7_controller():
                 O0, O1 = P_user[i][3:], P_user[i+1][3:] 
 
                 print(f"\n TASK: {P0}, {O0} ==> {P1}, {O1} \n", end="")
-            
-                n = 100
-                self.a0_pos, self.a1_pos, self.a2_pos, self.a3_pos = cubic_interpolation(P0, P1, n, 1/self.rate)
-                self.a0_ori, self.a1_ori, self.a2_ori, self.a3_ori = cubic_interpolation(O0, O1, n, 1/self.rate)  
-                self.full_control(n)
+      
+                self.a0_pos, self.a1_pos, self.a2_pos, self.a3_pos = cubic_interpolation(P0, P1, self.rate, 1/self.rate)
+                self.a0_ori, self.a1_ori, self.a2_ori, self.a3_ori = cubic_interpolation(O0, O1, self.rate, 1/self.rate)  
+                
+                self.full_control(self.rate)
 
                 # P = linear_interpolation(P0, P1, self.rate)
                 # O = linear_interpolation(O0, O1, self.rate)
