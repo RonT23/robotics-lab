@@ -238,54 +238,76 @@ class xArm7_controller():
             ]
 
             # plot the actual VS desired position
-            plt.figure(figsize=(12, 8))  
-           
-            plt.plot(x_inter, linestyle='--', linewidth=2, color=colors[0], label='X Position (Desired)') 
-            plt.plot(y_inter, linestyle='--', linewidth=2, color=colors[1], label='Y Position (Desired)')
-            plt.plot(z_inter, linestyle='--', linewidth=2, color=colors[2], label='Z Position (Desired)')
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('End-Effector Position', fontsize=16)
 
-            plt.plot(self.x_robot, linestyle='-', linewidth=2, color=colors[0], label='X Position (Executed)') 
-            plt.plot(self.y_robot, linestyle='-', linewidth=2, color=colors[1], label='Y Position (Executed)')
-            plt.plot(self.z_robot, linestyle='-', linewidth=2, color=colors[2], label='Z Position (Executed)')
+            axs[0].plot(x_inter, '--', linewidth=2, color=colors[0], label='X Desired')
+            axs[0].plot(self.x_robot, '-', linewidth=2, color=colors[0], label='X Executed')
+            axs[0].set_ylabel('X (m)', fontsize=12)
+            axs[0].legend()
+            axs[0].grid(True)
 
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('End Effector Position (m)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            axs[1].plot(y_inter, '--', linewidth=2, color=colors[1], label='Y Desired')
+            axs[1].plot(self.y_robot, '-', linewidth=2, color=colors[1], label='Y Executed')
+            axs[1].set_ylabel('Y (m)', fontsize=12)
+            axs[1].legend()
+            axs[1].grid(True)
+
+            axs[2].plot(z_inter, '--', linewidth=2, color=colors[2], label='Z Desired')
+            axs[2].plot(self.z_robot, '-', linewidth=2, color=colors[2], label='Z Executed')
+            axs[2].set_ylabel('Z (m)', fontsize=12)
+            axs[2].set_xlabel('Time Instance', fontsize=12)
+            axs[2].legend()
+            axs[2].grid(True)
+
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
 
             # plot the total position error 
-            plt.figure(figsize=(12, 8))  
-            
-            plt.plot(np.array(x_inter) - np.array(self.x_robot), linestyle='--', linewidth=2, color=colors[0], label='X Position Error') 
-            plt.plot(np.array(y_inter) - np.array(self.y_robot), linestyle='--', linewidth=2, color=colors[1], label='Y Position Error')
-            plt.plot(np.array(z_inter) - np.array(self.z_robot), linestyle='--', linewidth=2, color=colors[2], label='Z Position Error')
-            
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('End Effector Position Error (m)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('End-Effector Position Error', fontsize=16)
+
+            axs[0].plot(np.array(x_inter) - np.array(self.x_robot), '--', linewidth=2, color=colors[0], label='X Error')
+            axs[0].set_ylabel('X Error (m)', fontsize=12)
+            axs[0].legend()
+            axs[0].grid(True)
+
+            axs[1].plot(np.array(y_inter) - np.array(self.y_robot), '--', linewidth=2, color=colors[1], label='Y Error')
+            axs[1].set_ylabel('Y Error (m)', fontsize=12)
+            axs[1].legend()
+            axs[1].grid(True)
+
+            axs[2].plot(np.array(z_inter) - np.array(self.z_robot), '--', linewidth=2, color=colors[2], label='Z Error')
+            axs[2].set_ylabel('Z Error (m)', fontsize=12)
+            axs[2].set_xlabel('Time Instance', fontsize=12)
+            axs[2].legend()
+            axs[2].grid(True)
+
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
 
             # Joint configuration actual VS commanded
-            plt.figure(figsize=(12, 8))  
-           
-            plt.plot(self.q1_commanded, linestyle='--', linewidth=2, color=colors[0], label='q1 Displacement (Desired)') 
-            plt.plot(self.q2_commanded, linestyle='--', linewidth=2, color=colors[1], label='q2 Displacement (Desired)')
-            plt.plot(self.q4_commanded, linestyle='--', linewidth=2, color=colors[2], label='q4 Displacement (Desired)')
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('Joint Configuration', fontsize=16)
 
-            plt.plot(self.q1_actual, linestyle='-', linewidth=2, color=colors[0], label='q1 Displacement (Actual)') 
-            plt.plot(self.q2_actual, linestyle='-', linewidth=2, color=colors[1], label='q2 Displacement (Actual)')
-            plt.plot(self.q4_actual, linestyle='-', linewidth=2, color=colors[2], label='q4 Displacement (Actual)')
+            axs[0].plot(self.q1_commanded, '--', linewidth=2, color=colors[0], label='q1 Desired')
+            axs[0].plot(self.q1_actual, '-', linewidth=2, color=colors[0], label='q1 Actual')
+            axs[0].set_ylabel('q1 (rad)', fontsize=12)
+            axs[0].legend()
+            axs[0].grid(True)
 
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('Joint displacement (rad)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            axs[1].plot(self.q2_commanded, '--', linewidth=2, color=colors[1], label='q2 Desired')
+            axs[1].plot(self.q2_actual, '-', linewidth=2, color=colors[1], label='q2 Actual')
+            axs[1].set_ylabel('q2 (rad)', fontsize=12)
+            axs[1].legend()
+            axs[1].grid(True)
+
+            axs[2].plot(self.q4_commanded, '--', linewidth=2, color=colors[2], label='q4 Desired')
+            axs[2].plot(self.q4_actual, '-', linewidth=2, color=colors[2], label='q4 Actual')
+            axs[2].set_ylabel('q4 (rad)', fontsize=12)
+            axs[2].set_xlabel('Time Instance', fontsize=12)
+            axs[2].legend()
+            axs[2].grid(True)
+
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
             plt.show()
 
