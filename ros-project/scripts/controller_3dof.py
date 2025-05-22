@@ -19,19 +19,17 @@ import numpy as np
 from kinematics import xArm7_kinematics
 
 # Additional utility functions created
-from utils import cubic_interpolation
 from utils import linear_interpolation
 from utils import read_task_file
 
 C_USER_TASK_FILE = "task_file.txt"           
-C_EVALUATION     = False 
-C_EVALUATION_CYCLES = 4
+C_EVALUATION     = True 
+C_EVALUATION_CYCLES = 3
 
 class xArm7_controller():
     """
     Class to compute and publish joints positions
     """
-    
     def __init__(self, rate):
 
         #-------- Robot Manipulator Setup ---------------
@@ -223,6 +221,7 @@ class xArm7_controller():
 
                 # print the end effector position reached
                 self.print_current_ee_position("Final")
+                self.print_current_ee_orientation("Final")
                 
             if C_EVALUATION: 
                 iteration += 1
@@ -231,14 +230,24 @@ class xArm7_controller():
         
         if C_EVALUATION:
             import matplotlib.pyplot as plt
+
+            colors = [
+                'tab:blue',   
+                'tab:orange',
+                'tab:green'  
+            ]
+
             # plot the actual VS desired position
             plt.figure(figsize=(12, 8))  
-            plt.plot(x_inter, linewidth=2, label='X Position (Desired)') 
-            plt.plot(y_inter, linewidth=2, label='Y Position (Desired)')
-            plt.plot(z_inter, linewidth=2, label='Z Position (Desired)')
-            plt.plot(self.x_robot, linewidth=2, label='X Position (Executed)') 
-            plt.plot(self.y_robot, linewidth=2, label='Y Position (Executed)')
-            plt.plot(self.z_robot, linewidth=2, label='Z Position (Executed)')
+           
+            plt.plot(x_inter, linestyle='--', linewidth=2, color=colors[0], label='X Position (Desired)') 
+            plt.plot(y_inter, linestyle='--', linewidth=2, color=colors[1], label='Y Position (Desired)')
+            plt.plot(z_inter, linestyle='--', linewidth=2, color=colors[2], label='Z Position (Desired)')
+
+            plt.plot(self.x_robot, linestyle='-', linewidth=2, color=colors[0], label='X Position (Executed)') 
+            plt.plot(self.y_robot, linestyle='-', linewidth=2, color=colors[1], label='Y Position (Executed)')
+            plt.plot(self.z_robot, linestyle='-', linewidth=2, color=colors[2], label='Z Position (Executed)')
+
             plt.xlabel('Time Instance', fontsize=14) 
             plt.ylabel('End Effector Position (m)', fontsize=14)
             plt.grid(True)
@@ -248,9 +257,11 @@ class xArm7_controller():
 
             # plot the total position error 
             plt.figure(figsize=(12, 8))  
-            plt.plot(np.array(x_inter) - np.array(self.x_robot), linewidth=2, label='X Position Error') 
-            plt.plot(np.array(y_inter) - np.array(self.y_robot), linewidth=2, label='Y Position Error')
-            plt.plot(np.array(z_inter) - np.array(self.z_robot), linewidth=2, label='Z Position Error')
+            
+            plt.plot(np.array(x_inter) - np.array(self.x_robot), linestyle='--', linewidth=2, color=colors[0], label='X Position Error') 
+            plt.plot(np.array(y_inter) - np.array(self.y_robot), linestyle='--', linewidth=2, color=colors[1], label='Y Position Error')
+            plt.plot(np.array(z_inter) - np.array(self.z_robot), linestyle='--', linewidth=2, color=colors[2], label='Z Position Error')
+            
             plt.xlabel('Time Instance', fontsize=14) 
             plt.ylabel('End Effector Position Error (m)', fontsize=14)
             plt.grid(True)
@@ -260,12 +271,15 @@ class xArm7_controller():
 
             # Joint configuration actual VS commanded
             plt.figure(figsize=(12, 8))  
-            plt.plot(self.q1_commanded, linewidth=2, label='q1 Displacement (Desired)') 
-            plt.plot(self.q2_commanded, linewidth=2, label='q2 Displacement (Desired)')
-            plt.plot(self.q4_commanded, linewidth=2, label='q4 Displacement (Desired)')
-            plt.plot(self.q1_actual, linewidth=2, label='q1 Displacement (Actual)') 
-            plt.plot(self.q2_actual, linewidth=2, label='q2 Displacement (Actual)')
-            plt.plot(self.q4_actual, linewidth=2, label='q4 Displacement (Actual)')
+           
+            plt.plot(self.q1_commanded, linestyle='--', linewidth=2, color=colors[0], label='q1 Displacement (Desired)') 
+            plt.plot(self.q2_commanded, linestyle='--', linewidth=2, color=colors[1], label='q2 Displacement (Desired)')
+            plt.plot(self.q4_commanded, linestyle='--', linewidth=2, color=colors[2], label='q4 Displacement (Desired)')
+
+            plt.plot(self.q1_actual, linestyle='-', linewidth=2, color=colors[0], label='q1 Displacement (Actual)') 
+            plt.plot(self.q2_actual, linestyle='-', linewidth=2, color=colors[1], label='q2 Displacement (Actual)')
+            plt.plot(self.q4_actual, linestyle='-', linewidth=2, color=colors[2], label='q4 Displacement (Actual)')
+
             plt.xlabel('Time Instance', fontsize=14) 
             plt.ylabel('Joint displacement (rad)', fontsize=14)
             plt.grid(True)

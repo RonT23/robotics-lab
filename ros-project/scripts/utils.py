@@ -1,15 +1,5 @@
 import numpy as np
 
-def cross_product(a, b):
-    """
-    Compute the cross product from 2 given space vectors a and b
-    """
-    return [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0]
-    ]
-
 # Foundamental transformation operations
 def Rot(axis, angle):
     """
@@ -47,6 +37,28 @@ def Tra(axis, displacement):
         print("[ERROR] Tra : Invalid axis. Returning identity.")
     return T
 
+def eulerAnglesToAngularVelocities(euler_angles, euler_rates):
+    """
+    Convert ZYX Euler angles and their time derivatives into angular velocity in the body frame.
+
+    @param euler_angles: [roll, pitch, yaw]
+    @param euler_rates: [droll/dt, dpitch/dt, dyaw/dt]
+    """
+    roll, pitch, yaw = euler_angles
+    droll, dpitch, dyaw = euler_rates
+
+    # Transformation matrix for ZYX Euler angles
+    T = np.array([
+        [np.cos(pitch) * np.cos(yaw), -np.sin(yaw), 0],
+        [np.cos(pitch) * np.sin(yaw),  np.cos(yaw), 0],
+        [-np.sin(pitch),             0, 1]
+    ])
+   
+    omega = T @ np.array([droll, dpitch, dyaw])
+    
+    return omega
+
+# Basic Interpolation algrithms
 def cubic_interpolation(P0, P1, dt, n):
     """
     This function is used to interpolate two points in space using cubic interpolation 
@@ -102,6 +114,7 @@ def linear_interpolation(P0, P1, n):
 
     return np.array(linear_points)
 
+# User-interface
 def read_task_file(filename):
     """
     This function reads and decodes the user-specified commands from the 

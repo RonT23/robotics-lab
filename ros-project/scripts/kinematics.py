@@ -7,7 +7,7 @@ Compute state space kinematic matrices for xArm7 robot arm (5 links, 7 joints)
 import numpy as np
 import math
 
-from utils import Rot, Tra, cross_product
+from utils import Rot, Tra
 
 # Checks if a matrix is a valid rotation matrix.
 def isRotationMatrix(R) :
@@ -86,15 +86,17 @@ class xArm7_kinematics():
 
     # DK
     def compute_jacobian(self, r_joints_array): 
+
         q1, q2, q3, q4, q5, q6, q7 = r_joints_array
-        # homogeneous transformations
-        A01 = Rot("z", q1) @ Tra("z", self.l1) @ Rot("x", -np.pi/2) #self.tf_A01(r_joints_array)
-        A12 = Rot("z", q2) @ Rot("x", np.pi/2) #self.tf_A02(r_joints_array)
-        A23 = Rot("z", q3) @ Tra("z", self.l2) @ Rot("x", np.pi/2) @ Tra("x", self.l3) #self.tf_A03(r_joints_array)
-        A34 = Rot("z", q4) @ Rot("x", np.pi/2) @ Tra("x", self.l4 * np.sin(self.theta1)) #self.tf_A04(r_joints_array)
-        A45 = Rot("z", q5) @ Tra("z", self.l4 * np.cos(self.theta1)) @ Rot("x", np.pi/2)#self.tf_A05(r_joints_array)
-        A56 = Rot("z", q6) @ Rot("x", -np.pi/2) @ Tra("x", self.l5 * np.sin(self.theta2))#self.tf_A06(r_joints_array)
-        A67 = Rot("z", q7)  #self.tf_A07(r_joints_array)
+
+        # homogeneous transformations from joint to joint
+        A01 = Rot("z", q1) @ Tra("z", self.l1) @ Rot("x", -np.pi/2) 
+        A12 = Rot("z", q2) @ Rot("x", np.pi/2)
+        A23 = Rot("z", q3) @ Tra("z", self.l2) @ Rot("x", np.pi/2) @ Tra("x", self.l3)
+        A34 = Rot("z", q4) @ Rot("x", np.pi/2) @ Tra("x", self.l4 * np.sin(self.theta1)) 
+        A45 = Rot("z", q5) @ Tra("z", self.l4 * np.cos(self.theta1)) @ Rot("x", np.pi/2)
+        A56 = Rot("z", q6) @ Rot("x", -np.pi/2) @ Tra("x", self.l5 * np.sin(self.theta2))
+        A67 = Rot("z", q7)
 
         A02 = A01 @ A12
         A03 = A02 @ A23 
@@ -267,115 +269,3 @@ class xArm7_kinematics():
         position    = tf[:3, 3]  
         orientation = self.rotationMatrixToEulerAngles(tf[:3, :3])
         return np.concatenate((position, orientation))
-
-    def eulerAnglesToAngularVelocities(self, euler_angles, deuler_angles_dt):
-        """
-        Compute the angular velocities from the provided euler angles and euler angles 
-        time derivative
-        """
-        x, y, z = euler_angles
-        dx, dy, dz = deuler_angles_dt
-        
-        wx = dx - dz * np.sin(y) 
-        wy = dy * np.cos(x) + dz * np.sin(x) * np.cos(y)
-        wz = -dy * np.sin(x) + dx * np.cos(x) * np.cos(y)
-
-        return np.array([wx, wy, wz])
-
-
-
-
-
-
-
-
-
-
-
-    def numerical_jacobian(self, q, delta=1e-6):
-        J_num = np.zeros((6, 7))
-        f_q   = self.pose_from_tf(self.tf_A07(q)) 
-        for i in range(7):
-            dq = np.zeros(7)
-            dq[i] = delta
-            f_q_perturbed = self.pose_from_tf(self.tf_A07(q + dq))
-            J_num[:, i] = (f_q_perturbed - f_q) / delta
-        return J_num
-    
-
-
-
-
-    def partial_tf_A01(self):
-        # Joint 1: alpha=0, a=0
-        return np.eye(4)  # Identity, since no Rx or Tx before Rz(theta1)
-
-    def partial_tf_A12(self):
-        # Joint 2: Rx(-pi/2), no Tx
-        return Rot("x", -np.pi/2)
-
-    def partial_tf_A23(self):
-        # Joint 3: Rx(pi/2), no Tx
-        return Rot("x", np.pi/2)
-
-    def partial_tf_A34(self):
-        # Joint 4: Rx(pi/2), Tx(l3)
-        return Rot("x", np.pi/2) @ Tra("x", self.l3)
-
-    def partial_tf_A45(self):
-        # Joint 5: Rx(pi/2), Tx(l4 * sin(theta1))
-        return Rot("x", np.pi/2) @ Tra("x", self.l4 * np.sin(self.theta1))
-
-    def partial_tf_A56(self):
-        # Joint 6: Rx(pi/2), no Tx
-        return Rot("x", np.pi/2)
-
-    def partial_tf_A67(self):
-        # Joint 7: Rx(-pi/2), Tx(l5 * sin(theta2))
-        return Rot("x", -np.pi/2) @ Tra("x", self.l5 * np.sin(self.theta2))
-    
-    def partial_transform_to(self, joint_index):
-        # joint_index: integer from 1 to 7
-        
-        partial_funcs = [self.partial_tf_A01, self.partial_tf_A12, self.partial_tf_A23,
-                        self.partial_tf_A34, self.partial_tf_A45, self.partial_tf_A56,
-                        self.partial_tf_A67]
-        
-        T = np.eye(4)
-        for i in range(joint_index-1):  # up to i-1 partial transforms
-            T = T @ partial_funcs[i]()
-        return T
-    
-    def joint_axis(self, joint_index):
-        T_partial = self.partial_transform_to(joint_index)
-        z = T_partial[0:3, 2]
-        return z / np.linalg.norm(z)
-    
-    def joint_origin(self, r_joints_array, joint_index):
-        tf_full_funcs = [self.tf_A01, self.tf_A02, self.tf_A03, self.tf_A04,
-                        self.tf_A05, self.tf_A06, self.tf_A07]
-        T_full = tf_full_funcs[joint_index-1](r_joints_array)
-        p = T_full[0:3, 3]
-        return p
-    
-    def jacobian_column(self, r_joints_array, joint_index, p_e):
-        z = self.joint_axis(joint_index)
-        p = self.joint_origin(r_joints_array, joint_index)
-        J_v = np.cross(z, (p_e - p))
-        J_w = z
-        return J_v, J_w
-    
-    def jacobian(self, r_joints_array):
-        p_e = self.tf_A07(r_joints_array)[0:3, 3]  # end-effector position
-        
-        J_v = []
-        J_w = []
-        for i in range(1, 8):  # joints 1 to 7
-            jv, jw = self.jacobian_column(r_joints_array, i, p_e)
-            J_v.append(jv)
-            J_w.append(jw)
-        
-        J_v = np.column_stack(J_v)
-        J_w = np.column_stack(J_w)
-        J = np.vstack((J_v, J_w))
-        return J
