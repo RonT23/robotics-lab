@@ -131,9 +131,7 @@ class xArm7_controller():
         X = np.zeros(6)
         Xdot = np.zeros(6)
 
-        kp = np.diag([5, 5, 5, 1.2, 1, 1])
-        kr = np.array([0, 0, 0, 0, 0, 0, 0])
-        knull = -np.eye(7) * 0.5 
+        kp = np.diag([2, 2, 2, 2, 2, 2])
 
         for i in range(0, n):
             if rospy.is_shutdown():
@@ -165,16 +163,10 @@ class xArm7_controller():
             
             X = target_pose - current_pose
             Xdot[:3] = target_velocity[:3]
-            #Xdot[3:] = target_velocity[3:]
-
             Xdot[3:] = eulerAnglesToAngularVelocities(target_pose[3:], target_velocity[3:])
             
-            q = np.array(self.joint_states.position)
-            q_desired = np.array(self.joint_angpos)
-            kr = -knull @ (q - q_desired)
-            
             # compute the angular velocities
-            self.joint_angvel  = pinvJ @ ( Xdot + kp @ X ) + (np.eye(7) - pinvJ @ J) @ kr
+            self.joint_angvel  = pinvJ @ ( Xdot + kp @ X ) 
 
             time_prev =  self.time_now
             rostime_now = rospy.get_rostime()
@@ -307,90 +299,115 @@ class xArm7_controller():
                 'tab:pink'  
             ]
 
-            # plot the actual VS desired position
-            plt.figure(figsize=(12, 8))  
+            # End-Effector Position
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('End-Effector Position', fontsize=16)
 
-            plt.plot(self.x_inter, linestyle='--', linewidth=2, color=colors[0], label='X (Desired)') 
-            plt.plot(self.y_inter, linestyle='--', linewidth=2, color=colors[1], label='Y (Desired)')
-            plt.plot(self.z_inter, linestyle='--', linewidth=2, color=colors[2], label='Z (Desired)')
+            axs[0].plot(self.x_inter, '--', linewidth=2, color=colors[0], label='X (Desired)') 
+            axs[0].plot(self.x_robot, '-', linewidth=2, color=colors[0], label='X (Executed)') 
+            axs[0].set_ylabel('X (m)')
+            axs[0].legend()
+            axs[0].grid(True)
 
-            plt.plot(self.x_robot, linestyle='-', linewidth=2, color=colors[0], label='X (Executed)') 
-            plt.plot(self.y_robot, linestyle='-', linewidth=2, color=colors[1], label='Y (Executed)')
-            plt.plot(self.z_robot, linestyle='-', linewidth=2, color=colors[2], label='Z (Executed)')
+            axs[1].plot(self.y_inter, '--', linewidth=2, color=colors[1], label='Y (Desired)')
+            axs[1].plot(self.y_robot, '-', linewidth=2, color=colors[1], label='Y (Executed)')
+            axs[1].set_ylabel('Y (m)')
+            axs[1].legend()
+            axs[1].grid(True)
 
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('End Effector Position (m)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            axs[2].plot(self.z_inter, '--', linewidth=2, color=colors[2], label='Z (Desired)')
+            axs[2].plot(self.z_robot, '-', linewidth=2, color=colors[2], label='Z (Executed)')
+            axs[2].set_ylabel('Z (m)')
+            axs[2].set_xlabel('Time Instance')
+            axs[2].legend()
+            axs[2].grid(True)
 
-            # plot the actual VS desired position
-            plt.figure(figsize=(12, 8))  
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
 
-            plt.plot(self.thx_inter, linestyle='--', linewidth=2, color=colors[0], label='Θx (Desired)') 
-            plt.plot(self.thy_inter, linestyle='--', linewidth=2, color=colors[1], label='Θy (Desired)')
-            plt.plot(self.thz_inter, linestyle='--', linewidth=2, color=colors[2], label='θz (Desired)')
+            # End-Effector Orientation
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('End-Effector Orientation', fontsize=16)
 
-            plt.plot(self.thx_robot, linestyle='-', linewidth=2, color=colors[0], label='θx (Executed)') 
-            plt.plot(self.thy_robot, linestyle='-', linewidth=2, color=colors[1], label='θy (Executed)')
-            plt.plot(self.thz_robot, linestyle='-', linewidth=2, color=colors[2], label='θz (Executed)')
+            axs[0].plot(self.thx_inter, '--', linewidth=2, color=colors[0], label='Θx (Desired)') 
+            axs[0].plot(self.thx_robot, '-', linewidth=2, color=colors[0], label='Θx (Executed)') 
+            axs[0].set_ylabel('Θx (rad)')
+            axs[0].legend()
+            axs[0].grid(True)
 
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('End Effector Orientation (rad)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            axs[1].plot(self.thy_inter, '--', linewidth=2, color=colors[1], label='Θy (Desired)')
+            axs[1].plot(self.thy_robot, '-', linewidth=2, color=colors[1], label='Θy (Executed)')
+            axs[1].set_ylabel('Θy (rad)')
+            axs[1].legend()
+            axs[1].grid(True)
 
-            # plot the total position error 
-            plt.figure(figsize=(12, 8))  
-            plt.plot(np.array(self.x_inter) - np.array(self.x_robot), linestyle='--', linewidth=2, color=colors[0], label='X Error') 
-            plt.plot(np.array(self.y_inter) - np.array(self.y_robot), linestyle='--', linewidth=2, color=colors[1], label='Y Error')
-            plt.plot(np.array(self.z_inter) - np.array(self.z_robot), linestyle='--', linewidth=2, color=colors[2], label='Z Error')
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('End Effector Position Error (m)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            axs[2].plot(self.thz_inter, '--', linewidth=2, color=colors[2], label='Θz (Desired)')
+            axs[2].plot(self.thz_robot, '-', linewidth=2, color=colors[2], label='Θz (Executed)')
+            axs[2].set_ylabel('Θz (rad)')
+            axs[2].set_xlabel('Time Instance')
+            axs[2].legend()
+            axs[2].grid(True)
 
-            # plot the total position error 
-            plt.figure(figsize=(12, 8))  
-            plt.plot(np.array(self.thx_inter) - np.array(self.thx_robot), linestyle='--', linewidth=2, color=colors[0], label='θx Error') 
-            plt.plot(np.array(self.thy_inter) - np.array(self.thy_robot), linestyle='--', linewidth=2, color=colors[1], label='θy Error')
-            plt.plot(np.array(self.thz_inter) - np.array(self.thz_robot), linestyle='--', linewidth=2, color=colors[2], label='θz Error')
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('End Effector Orientation Error (rad)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-            # Joint configuration actual VS commanded
-            plt.figure(figsize=(12, 8))  
-            plt.plot(self.q1_commanded, linestyle='--', linewidth=2, color=colors[0], label='q1 (Desired)') 
-            plt.plot(self.q2_commanded, linestyle='--', linewidth=2, color=colors[1], label='q2 (Desired)')
-            plt.plot(self.q3_commanded, linestyle='--', linewidth=2, color=colors[2], label='q3 (Desired)')
-            plt.plot(self.q4_commanded, linestyle='--', linewidth=2, color=colors[3], label='q4 (Desired)') 
-            plt.plot(self.q5_commanded, linestyle='--', linewidth=2, color=colors[4], label='q5 (Desired)')
-            plt.plot(self.q6_commanded, linestyle='--', linewidth=2, color=colors[5], label='q6 (Desired)')
-            plt.plot(self.q7_commanded, linestyle='--', linewidth=2, color=colors[6], label='q7 (Desired)') 
+            # End-Effector Position Error
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('End-Effector Position Error', fontsize=16)
+
+            axs[0].plot(np.array(self.x_inter) - np.array(self.x_robot), '--', linewidth=2, color=colors[0], label='X Error') 
+            axs[0].set_ylabel('X Error (m)', fontsize=12)
+            axs[0].legend()
+            axs[0].grid(True)
             
-            plt.plot(self.q1_actual, linestyle='-', linewidth=2, color=colors[0], label='q1 (Actual)')
-            plt.plot(self.q2_actual, linestyle='-', linewidth=2, color=colors[1], label='q2 (Actual)')
-            plt.plot(self.q3_actual, linestyle='-', linewidth=2, color=colors[2], label='q3 (Actual)') 
-            plt.plot(self.q4_actual, linestyle='-', linewidth=2, color=colors[3], label='q4 (Actual)')
-            plt.plot(self.q5_actual, linestyle='-', linewidth=2, color=colors[4], label='q5 (Actual)')
-            plt.plot(self.q6_actual, linestyle='-', linewidth=2, color=colors[5], label='q6 (Actual)') 
-            plt.plot(self.q7_actual, linestyle='-', linewidth=2, color=colors[6], label='q7 (Actual)')
-        
-            plt.xlabel('Time Instance', fontsize=14) 
-            plt.ylabel('Joint displacement (rad)', fontsize=14)
-            plt.grid(True)
-            plt.legend(fontsize=12)
-            plt.tick_params(axis='both', which='major', labelsize=12)
-            plt.tight_layout()  
+            axs[1].plot(np.array(self.y_inter) - np.array(self.y_robot), '--', linewidth=2, color=colors[1], label='Y Error')
+            axs[1].set_ylabel('Y Error (m)', fontsize=12)
+            axs[1].legend()
+            axs[1].grid(True)
+            
+            axs[2].plot(np.array(self.z_inter) - np.array(self.z_robot), '--', linewidth=2, color=colors[2], label='Z Error')
+            axs[2].set_ylabel('Z Error (m)', fontsize=12)
+            axs[2].set_xlabel('Time Instance') 
+            axs[2].legend()
+            axs[2].grid(True)
+
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
+
+            # End-Effector Orientation Error
+            fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            fig.suptitle('End-Effector Orientation Error', fontsize=16)
+
+            axs[0].plot(np.array(self.thx_inter) - np.array(self.thx_robot), '--', linewidth=2, color=colors[0], label='Θx Error') 
+            axs[0].set_ylabel('Θx Error (rad)', fontsize=12)
+            axs[0].legend()
+            axs[0].grid(True)
+
+            axs[1].plot(np.array(self.thy_inter) - np.array(self.thy_robot), '--', linewidth=2, color=colors[1], label='Θy Error')
+            axs[1].set_ylabel('Θy Error (rad)', fontsize=12)
+            axs[1].legend()
+            axs[1].grid(True)
+
+            axs[2].plot(np.array(self.thz_inter) - np.array(self.thz_robot), '--', linewidth=2, color=colors[2], label='Θz Error')
+            axs[2].set_ylabel('Θz Error (rad)', fontsize=12)
+            axs[2].legend()
+            axs[2].grid(True)
+            axs[2].set_xlabel('Time Instance') 
+
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
+
+            # Joint Position Tracking
+            fig, axs = plt.subplots(7, 1, figsize=(12, 16), sharex=True)
+            fig.suptitle('Joint Positions', fontsize=16)
+
+            for i in range(7):
+                q_cmd = getattr(self, f'q{i+1}_commanded')
+                q_act = getattr(self, f'q{i+1}_actual')
+                axs[i].plot(q_cmd, '--', linewidth=2, color=colors[i], label=f'q{i+1} (Desired)')
+                axs[i].plot(q_act, '-', linewidth=2, color=colors[i], label=f'q{i+1} (Actual)')
+                axs[i].set_ylabel(f'q{i+1} (rad)')
+                axs[i].legend()
+                axs[i].grid(True)
+
+            axs[6].set_xlabel('Time Instance')
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
 
             plt.show()
 
