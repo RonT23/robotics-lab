@@ -131,7 +131,7 @@ class xArm7_controller():
         X = np.zeros(6)
         Xdot = np.zeros(6)
 
-        kp = np.diag([2, 2, 2, 2, 2, 2])
+        kp = np.diag([4, 4, 4, 1, 1, 1])
 
         for i in range(0, n):
             if rospy.is_shutdown():
@@ -152,15 +152,6 @@ class xArm7_controller():
                 target_velocity[j]    =                  self.a1_pos[j] * time + self.a2_pos[j] * 2 * time + self.a3_pos[j] * 3 * time**2
                 target_velocity[j+3]  =                  self.a1_ori[j] * time + self.a2_ori[j] * 2 * time + self.a3_ori[j] * 3 * time**2
             
-            # for statistics
-            self.x_inter.append(target_pose[0])
-            self.y_inter.append(target_pose[1])
-            self.z_inter.append(target_pose[2])
-            
-            self.thx_inter.append(target_pose[3])
-            self.thy_inter.append(target_pose[4])
-            self.thz_inter.append(target_pose[5])
-            
             X = target_pose - current_pose
             Xdot[:3] = target_velocity[:3]
             Xdot[3:] = eulerAnglesToAngularVelocities(target_pose[3:], target_velocity[3:])
@@ -173,8 +164,8 @@ class xArm7_controller():
             self.time_now = rostime_now.to_sec()
             dt = self.time_now - time_prev
             
-            # update the time counter for the target position computation
-            time = time + dt 
+            # update the time interval for the target position computation
+            time += dt 
 
             self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel * dt)
             self.joint_angpos = np.asarray(self.joint_angpos).flatten()
@@ -185,6 +176,14 @@ class xArm7_controller():
             self.pub_rate.sleep()
 
             # record data for evaluation
+            self.x_inter.append(target_pose[0])
+            self.y_inter.append(target_pose[1])
+            self.z_inter.append(target_pose[2])
+            
+            self.thx_inter.append(target_pose[3])
+            self.thy_inter.append(target_pose[4])
+            self.thz_inter.append(target_pose[5])
+            
             A07 = self.kinematics.tf_A07(self.joint_states.position)
             robot_pose = self.kinematics.pose_from_tf(A07)
 
