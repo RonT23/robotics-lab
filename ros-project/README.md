@@ -11,38 +11,13 @@ sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io
 ```
 
-## 1. Configure the System (for Windows)
-
-Open powershell as admin.
-
-```shell
-wsl --install
-```
-
-Once installed reboot the system. 
-
-```shell
-wsl --set-default-version 2
-```
-
-Then install Docker Desktop for Windows and from settings > resources
-make sure that Ubuntu is ON.
-
-Open the WSL terminal and install GUI support:
-
-```shell
-sudo apt update
-sudp apt install x11-apps -y
-export DISPLAY=:0
-```
-
-## 1. Build the ROS Noetic Docker Image
+## 2. Build the ROS Noetic Docker Image
 
 ```shell
 docker build -t ros-docker .
 ```
 
-## 2. Start the Container 
+## 3. Start the Container 
 
 Run the following commands on 2 terminals
 
@@ -52,7 +27,7 @@ xhost +local:docker # export DISPLAY=:0 for Windows on WSL
 ./start-docker-image.sh
 ```
 
-## 3. Compile the Package (terminal 1)
+## 4. Compile the Package (terminal 1)
 
 ```shell
 cd ~/catkin_ws
@@ -67,7 +42,7 @@ catkin_make
 source devel/setup.bash
 ```
 
-## 4. Run the Gazebo Simulator (terminal 2)
+## 5. Run the Gazebo Simulator (terminal 2)
 
 ```shell
 cd ~/catkin_ws
@@ -75,7 +50,7 @@ source devel/setup.bash
 roslaunch xarm_gazebo zarm7_pf.launch
 ```
 
-## 5. Start the Package (terminal 1)
+## 6. Start the Package (terminal 1)
 
 ```shell
 roslaunch robosys_path_following path_following_3dof.launch

@@ -22,7 +22,7 @@ from kinematics import xArm7_kinematics
 from utils import linear_interpolation
 from utils import read_task_file
 
-C_USER_TASK_FILE = "task_file.txt"           
+C_USER_TASK_FILE = "task_file_3dof.txt"           
 C_EVALUATION     = True 
 C_EVALUATION_CYCLES = 3
 
@@ -107,6 +107,9 @@ class xArm7_controller():
         
         return True
 
+
+
+
     # Functions used for evaluation and debugging
     def print_current_joint_position(self, extra_msg=None):
         print(f"\nCurrent Joint Positions {extra_msg}")
@@ -152,8 +155,9 @@ class xArm7_controller():
         labels= ['x', 'y', 'z']
         for i, r in enumerate(ori):
             print(f" {labels[i]}: {r}")
-
     ###
+     
+
      
     def publish(self):
         """

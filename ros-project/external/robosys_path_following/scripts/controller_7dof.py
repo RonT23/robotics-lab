@@ -26,7 +26,7 @@ from utils import cubic_interpolation
 from utils import read_task_file
 from utils import eulerAnglesToAngularVelocities
 
-C_USER_TASK_FILE = "task_file_2.txt"
+C_USER_TASK_FILE = "task_file_7dof.txt"
 C_EVALUATION     = True 
 C_EVALUATION_CYCLES = 10
 
@@ -72,6 +72,8 @@ class xArm7_controller():
     
         # Functions used for evaluation and debugging
     
+
+
     ## These functions are used for debugging
     def print_current_joint_position(self, extra_msg=None):
         print(f"\nCurrent Joint Positions {extra_msg}")
@@ -119,18 +121,27 @@ class xArm7_controller():
             print(f" {labels[i]}: {r}")
     ###
 
+
+
     ### This function implements the task 2
     def full_control(self, n):
         """
+        Implements a cubic interpolation full-pose control path following algorithm
+        @param n: The number of interpolated samples 
+        @return : False if ROS server is off, True when the path is complete
         """
-        self.joint_angpos = self.joint_states.position
+
+        # initializations 
+        self.joint_angpos = self.joint_states.position # where the robot is now?
+        
         target_pose = np.zeros(6)
         target_velocity = np.zeros(6)
         time = 0
         
-        X = np.zeros(6)
-        Xdot = np.zeros(6)
+        error = np.zeros(6)        
+        V = np.zeros(6)
 
+        # proportional gain for the error 
         kp = np.diag([4, 4, 4, 1, 1, 1])
 
         for i in range(0, n):
@@ -142,37 +153,45 @@ class xArm7_controller():
             # Get current end effector pose
             current_pose = self.kinematics.pose_from_tf(self.kinematics.tf_A07(self.joint_states.position))
             
-            J = self.kinematics.compute_jacobian(self.joint_angpos)
-            pinvJ  = np.linalg.pinv(J)
+            # compute the Jacobian and the pseudo-inverse Jacobian matrix
+            J = self.kinematics.compute_jacobian(self.joint_angpos) # 6 x 7
+            pinvJ  = np.linalg.pinv(J) # 7 x 6
             
-            # get the desired position and velocity
+            # get the desired position and velocity through cubic interpolation
             for j in range(0, 3):
                 target_pose[j]        = self.a0_pos[j] + self.a1_pos[j] * time + self.a2_pos[j] * time**2  + self.a3_pos[j] * time**3
                 target_pose[j+3]      = self.a0_ori[j] + self.a1_ori[j] * time + self.a2_ori[j] * time**2  + self.a3_ori[j] * time**3
                 target_velocity[j]    =                  self.a1_pos[j] * time + self.a2_pos[j] * 2 * time + self.a3_pos[j] * 3 * time**2
                 target_velocity[j+3]  =                  self.a1_ori[j] * time + self.a2_ori[j] * 2 * time + self.a3_ori[j] * 3 * time**2
             
-            X = target_pose - current_pose
-            Xdot[:3] = target_velocity[:3]
-            Xdot[3:] = eulerAnglesToAngularVelocities(target_pose[3:], target_velocity[3:])
+            # compute the error
+            error = target_pose - current_pose
+            V[:3] = target_velocity[:3]
+            V[3:] = eulerAnglesToAngularVelocities(target_pose[3:], target_velocity[3:])
             
             # compute the angular velocities
-            self.joint_angvel  = pinvJ @ ( Xdot + kp @ X ) 
+            self.joint_angvel  = pinvJ @ ( V + kp @ error ) 
 
+            # get the time interval dt
             time_prev =  self.time_now
             rostime_now = rospy.get_rostime()
             self.time_now = rostime_now.to_sec()
             dt = self.time_now - time_prev
             
             # update the time interval for the target position computation
+            # this is a descrete representation of the actual time...
+            # not clear why it works so well! But it does
             time += dt 
 
+            # compute the joints new positions 
             self.joint_angpos = np.add(self.joint_angpos, self.joint_angvel * dt)
             self.joint_angpos = np.asarray(self.joint_angpos).flatten()
 
+            # publish the positions to the robot
             for j in range(7):
                 self.joint_pos_pub[j].publish(self.joint_angpos[j])
 
+            # wait until the magic happens
             self.pub_rate.sleep()
 
             # record data for evaluation

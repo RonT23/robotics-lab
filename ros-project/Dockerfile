@@ -30,9 +30,10 @@ RUN apt-get update && apt-get install -y \
 
 # Python ROS packages
 RUN pip3 install rospkg catkin_pkg
+RUN pip3 matplotlib
 
 # Setup ROS environment
-#RUN rosdep init && rosdep update
+RUN rosdep init && rosdep update
 RUN rm -f /etc/ros/rosdep/sources.list.d/20-default.list && \
     rosdep init && \
     rosdep update
