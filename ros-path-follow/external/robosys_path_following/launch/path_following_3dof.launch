@@ -1,0 +1,11 @@
+<launch>
+
+   <!--rosparam file="$(find robosys_path_following)/yaml/parameters.yaml" command="load" /-->
+
+   <param name="rate" value="100"/>
+
+   <!--node name="kinematics" pkg="robo2_redundant" type="kinematics.py" output="screen" /-->
+   <node name="controller" pkg="robosys_path_following" type="controller_3dof.py" output="screen" cwd="node" >
+   </node>
+
+</launch>

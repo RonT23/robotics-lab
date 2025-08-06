@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8.3)
+project(robosys_path_following)
+find_package(catkin REQUIRED COMPONENTS roscpp rospy std_msgs geometry_msgs message_generation genmsg)
+generate_messages(DEPENDENCIES std_msgs geometry_msgs)
+catkin_package(CATKIN_DEPENDS message_runtime)
+include_directories(include ${catkin_INCLUDE_DIRS})
