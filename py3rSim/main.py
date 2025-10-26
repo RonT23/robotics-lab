@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import numpy as np
 import matplotlib.pyplot as plt
-from py3Rsim_package.py3Rsim_package.robot_sim import *
+from py3Rsim_package.robot_sim import *
 import user
 
 def main():
